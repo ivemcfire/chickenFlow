@@ -38,9 +38,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 enum DoorState { DOOR_OPEN, DOOR_CLOSED, DOOR_OPENING, DOOR_CLOSING, DOOR_ERROR };
 
-DoorState doorState          = DOOR_CLOSED;
-DoorState prevReportedState  = DOOR_CLOSED;
-uint8_t   obstructionRetries = 0;
+// Motor sub-states for non-blocking movement
+enum MotorPhase { MOTOR_IDLE, MOTOR_MOVING, MOTOR_REOPEN, MOTOR_PAUSE, MOTOR_RETRY };
+
+DoorState  doorState          = DOOR_CLOSED;
+DoorState  prevReportedState  = DOOR_CLOSED;
+uint8_t    obstructionRetries = 0;
+
+// Non-blocking door movement state
+MotorPhase    motorPhase       = MOTOR_IDLE;
+bool          motorIsOpening   = false;
+String        motorPrevStr;          // door state string before movement started
+unsigned long motorPhaseStartMs = 0; // when the current phase began
+unsigned long lastObstCheckMs   = 0; // last ultrasonic check during close
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chicken counter (IR pulse counting)
@@ -63,7 +73,8 @@ float    measureDistanceCm();
 void     motorOpen();
 void     motorClose();
 void     motorStop();
-void     moveDoor(const char* direction);
+void     startDoorMove(const char* direction);
+void     tickDoorMotor();
 void     reportDoorEvent(const char* fromState, const char* toState);
 void     postSensorReading();
 void     postCameraCapture();
@@ -75,8 +86,8 @@ void     blinkLed(int times, int delayMs = 150);
 // Setup
 // ─────────────────────────────────────────────────────────────────────────────
 void setup() {
-  Serial.begin(115200);
-  Serial.println("\n[ChickenFlow] Booting...");
+  DBG_BEGIN(115200);
+  DBGLN("\n[ChickenFlow] Booting...");
 
   // GPIO setup
   pinMode(PIN_LED_STATUS,       OUTPUT);
@@ -101,11 +112,11 @@ void setup() {
     blinkLed(5);
   }
   prevReportedState = doorState;
-  Serial.printf("[Door] Boot state: %s\n", doorStateStr(doorState).c_str());
+  DBGF("[Door] Boot state: %s\n", doorStateStr(doorState).c_str());
 
   // Camera
   if (!cameraInit()) {
-    Serial.println("[Camera] FAILED — running without camera");
+    DBGLN("[Camera] FAILED — running without camera");
     blinkLed(3, 500);
   }
 
@@ -114,14 +125,14 @@ void setup() {
   wm.setConfigPortalTimeout(180);  // 3-minute AP window before reboot
   blinkLed(2);
   if (!wm.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS)) {
-    Serial.println("[WiFi] Config timeout — rebooting");
+    DBGLN("[WiFi] Config timeout — rebooting");
     ESP.restart();
   }
-  Serial.printf("[WiFi] Connected: %s  IP: %s\n",
+  DBGF("[WiFi] Connected: %s  IP: %s\n",
     WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 
   blinkLed(3, 80);  // 3 quick blinks = ready
-  Serial.println("[ChickenFlow] Ready.");
+  DBGLN("[ChickenFlow] Ready.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,7 +143,7 @@ void loop() {
 
   // Reconnect WiFi if dropped
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[WiFi] Reconnecting...");
+    DBGLN("[WiFi] Reconnecting...");
     WiFi.reconnect();
     delay(3000);
     return;
@@ -150,9 +161,12 @@ void loop() {
       chickensInside++;
     }
     irLastTriggerMs = now;
-    Serial.printf("[IR] Trigger — chickens inside: %d\n", chickensInside);
+    DBGF("[IR] Trigger — chickens inside: %d\n", chickensInside);
   }
   irLastState = irNow;
+
+  // Tick the non-blocking door motor state machine
+  tickDoorMotor();
 
   // Poll backend for commands
   if (now - lastCommandPollMs >= COMMAND_POLL_MS) {
@@ -183,7 +197,7 @@ void pollCommand() {
 
   int code = http.GET();
   if (code != 200) {
-    Serial.printf("[Command] HTTP %d\n", code);
+    DBGF("[Command] HTTP %d\n", code);
     http.end();
     return;
   }
@@ -193,89 +207,128 @@ void pollCommand() {
   http.end();
 
   if (err) {
-    Serial.printf("[Command] JSON parse error: %s\n", err.c_str());
+    DBGF("[Command] JSON parse error: %s\n", err.c_str());
     return;
   }
 
   const char* action = doc["action"] | "NONE";
-  Serial.printf("[Command] action=%s\n", action);
+  DBGF("[Command] action=%s\n", action);
 
-  if (strcmp(action, "OPEN") == 0 && doorState != DOOR_OPEN) {
-    moveDoor("OPEN");
-  } else if (strcmp(action, "CLOSE") == 0 && doorState != DOOR_CLOSED) {
-    moveDoor("CLOSE");
+  if (strcmp(action, "OPEN") == 0 && doorState != DOOR_OPEN && motorPhase == MOTOR_IDLE) {
+    startDoorMove("OPEN");
+  } else if (strcmp(action, "CLOSE") == 0 && doorState != DOOR_CLOSED && motorPhase == MOTOR_IDLE) {
+    startDoorMove("CLOSE");
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Door movement with obstruction detection
+// Door movement — non-blocking state machine
 // ─────────────────────────────────────────────────────────────────────────────
-void moveDoor(const char* direction) {
-  bool isOpening = (strcmp(direction, "OPEN") == 0);
-  DoorState targetState   = isOpening ? DOOR_OPEN   : DOOR_CLOSED;
-  DoorState movingState   = isOpening ? DOOR_OPENING : DOOR_CLOSING;
-  int       limitPin      = isOpening ? PIN_LIMIT_OPEN : PIN_LIMIT_CLOSE;
 
-  Serial.printf("[Door] Moving %s\n", direction);
+// Kick off a door move. Actual work happens in tickDoorMotor() each loop().
+void startDoorMove(const char* direction) {
+  motorIsOpening = (strcmp(direction, "OPEN") == 0);
+  motorPrevStr = doorStateStr(doorState);
+  doorState = motorIsOpening ? DOOR_OPENING : DOOR_CLOSING;
+  obstructionRetries = 0;
+  motorPhaseStartMs = millis();
+  lastObstCheckMs = 0;
+  motorPhase = MOTOR_MOVING;
 
-  String prevStr = doorStateStr(doorState);
-  doorState = movingState;
+  DBGF("[Door] Moving %s\n", direction);
+  if (motorIsOpening) motorOpen();
+  else                motorClose();
+}
 
-  unsigned long startMs = millis();
+// Called every loop() iteration. Returns immediately if MOTOR_IDLE.
+void tickDoorMotor() {
+  if (motorPhase == MOTOR_IDLE) return;
 
-  if (isOpening) motorOpen();
-  else           motorClose();
+  unsigned long now     = millis();
+  unsigned long elapsed = now - motorPhaseStartMs;
+  int limitPin = motorIsOpening ? PIN_LIMIT_OPEN : PIN_LIMIT_CLOSE;
 
-  while (millis() - startMs < DOOR_TRAVEL_MS) {
-    // Limit switch reached — door fully moved
-    if (digitalRead(limitPin) == LOW) {
-      motorStop();
-      String newStr = doorStateStr(targetState);
-      reportDoorEvent(prevStr.c_str(), newStr.c_str());
-      doorState = targetState;
-      obstructionRetries = 0;
-      Serial.printf("[Door] Reached %s\n", direction);
-      blinkLed(1, 80);
-      return;
-    }
+  switch (motorPhase) {
 
-    // Obstruction check during closing only
-    if (!isOpening) {
-      float dist = measureDistanceCm();
-      if (dist > 0 && dist < OBSTRUCTION_CM) {
+    // ── MOVING: motor is running, check limit switch + obstruction ──────────
+    case MOTOR_MOVING: {
+      // Limit switch hit → success
+      if (digitalRead(limitPin) == LOW) {
         motorStop();
-        Serial.printf("[Door] Obstruction at %.1f cm — retrying\n", dist);
-        obstructionRetries++;
-
-        if (obstructionRetries >= DOOR_RETRY_MAX) {
-          doorState = DOOR_ERROR;
-          reportDoorEvent(prevStr.c_str(), "ERROR");
-          blinkLed(6, 200);
-          Serial.println("[Door] ERROR — max retries exceeded");
-          return;
-        }
-
-        // Re-open briefly, wait, then retry
-        motorOpen();
-        delay(3000);
-        motorStop();
-        delay(30000);  // 30s wait for obstruction to clear
-
-        startMs = millis();  // Reset travel timer
-        motorClose();
-        continue;
+        DoorState target = motorIsOpening ? DOOR_OPEN : DOOR_CLOSED;
+        String newStr = doorStateStr(target);
+        reportDoorEvent(motorPrevStr.c_str(), newStr.c_str());
+        doorState = target;
+        obstructionRetries = 0;
+        motorPhase = MOTOR_IDLE;
+        DBGF("[Door] Reached %s\n", newStr.c_str());
+        blinkLed(1, 80);
+        return;
       }
+
+      // Travel timeout → ERROR
+      if (elapsed >= DOOR_TRAVEL_MS) {
+        motorStop();
+        doorState = DOOR_ERROR;
+        reportDoorEvent(motorPrevStr.c_str(), "ERROR");
+        motorPhase = MOTOR_IDLE;
+        blinkLed(5, 300);
+        DBGLN("[Door] TIMEOUT — limit switch not reached");
+        return;
+      }
+
+      // Obstruction check during closing (every 50ms)
+      if (!motorIsOpening && (now - lastObstCheckMs >= 50)) {
+        lastObstCheckMs = now;
+        float dist = measureDistanceCm();
+        if (dist > 0 && dist < OBSTRUCTION_CM) {
+          motorStop();
+          DBGF("[Door] Obstruction at %.1f cm\n", dist);
+          obstructionRetries++;
+
+          if (obstructionRetries >= DOOR_RETRY_MAX) {
+            doorState = DOOR_ERROR;
+            reportDoorEvent(motorPrevStr.c_str(), "ERROR");
+            motorPhase = MOTOR_IDLE;
+            blinkLed(6, 200);
+            DBGLN("[Door] ERROR — max retries exceeded");
+            return;
+          }
+
+          // Re-open briefly (3s)
+          motorOpen();
+          motorPhaseStartMs = now;
+          motorPhase = MOTOR_REOPEN;
+        }
+      }
+      break;
     }
 
-    delay(50);
-  }
+    // ── REOPEN: briefly opening to clear obstruction (3s) ───────────────────
+    case MOTOR_REOPEN:
+      if (elapsed >= 3000) {
+        motorStop();
+        motorPhaseStartMs = now;
+        motorPhase = MOTOR_PAUSE;
+        DBGLN("[Door] Waiting 30s for obstruction to clear");
+      }
+      break;
 
-  // Timeout — limit switch not reached
-  motorStop();
-  doorState = DOOR_ERROR;
-  reportDoorEvent(prevStr.c_str(), "ERROR");
-  blinkLed(5, 300);
-  Serial.println("[Door] TIMEOUT — limit switch not reached");
+    // ── PAUSE: waiting for obstruction to clear (30s) ───────────────────────
+    case MOTOR_PAUSE:
+      if (elapsed >= 30000) {
+        motorPhaseStartMs = now;
+        lastObstCheckMs = 0;
+        motorPhase = MOTOR_MOVING;
+        motorClose();
+        DBGLN("[Door] Retrying close");
+      }
+      break;
+
+    default:
+      motorPhase = MOTOR_IDLE;
+      break;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,7 +389,7 @@ void postSensorReading() {
   doc["distanceCm"]    = dist;
   doc["irTriggered"]   = ir;
   doc["chickensInside"] = chickensInside;
-  doc["totalChickens"]  = chickensInside;  // Backend holds the authoritative total
+  doc["totalChickens"]  = 0;  // Backend fills from settings — ESP32 doesn't know the real total
   doc["doorState"]      = doorStateStr(doorState);
 
   String body;
@@ -348,7 +401,7 @@ void postSensorReading() {
   http.addHeader("Content-Type", "application/json");
 
   int code = http.POST(body);
-  Serial.printf("[Sensor] POST %d  dist=%.1fcm  inside=%d\n", code, dist, chickensInside);
+  DBGF("[Sensor] POST %d  dist=%.1fcm  inside=%d\n", code, dist, chickensInside);
   http.end();
 }
 
@@ -358,7 +411,7 @@ void postSensorReading() {
 void postCameraCapture() {
   camera_fb_t* fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("[Camera] Capture failed");
+    DBGLN("[Camera] Capture failed");
     return;
   }
 
@@ -382,7 +435,7 @@ void postCameraCapture() {
   uint8_t* body  = (uint8_t*)malloc(bodyLen);
 
   if (!body) {
-    Serial.println("[Camera] malloc failed — frame too large?");
+    DBGLN("[Camera] malloc failed — frame too large?");
     esp_camera_fb_return(fb);
     http.end();
     return;
@@ -401,7 +454,7 @@ void postCameraCapture() {
   int code = http.POST(body, bodyLen);
   free(body);
 
-  Serial.printf("[Camera] Capture POST %d\n", code);
+  DBGF("[Camera] Capture POST %d\n", code);
   http.end();
 }
 
@@ -423,7 +476,7 @@ void reportDoorEvent(const char* fromState, const char* toState) {
   http.addHeader("Content-Type", "application/json");
 
   int code = http.POST(body);
-  Serial.printf("[Door] Event %s→%s  HTTP %d\n", fromState, toState, code);
+  DBGF("[Door] Event %s→%s  HTTP %d\n", fromState, toState, code);
   http.end();
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "esp_camera.h"
+#include "config.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Thinker ESP32-CAM pin map
@@ -57,7 +58,7 @@ bool cameraInit() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("[Camera] Init failed: 0x%x\n", err);
+    DBGF("[Camera] Init failed: 0x%x\n", err);
     return false;
   }
 
@@ -84,6 +85,6 @@ bool cameraInit() {
   s->set_dcw(s, 1);
   s->set_colorbar(s, 0);
 
-  Serial.println("[Camera] Initialised OK");
+  DBGLN("[Camera] Initialised OK");
   return true;
 }

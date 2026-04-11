@@ -1,1 +1,2 @@
-declare const GEMINI_API_KEY: string;
+// Global type declarations for the Angular app
+// (Gemini API key removed — AI analysis now goes through the backend)

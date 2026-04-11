@@ -7,14 +7,16 @@ import {
 } from '@angular/ssr/node';
 import express from 'express';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { apiRouter } from './server/api/router.js';
 import { attachWebSocketServer } from './server/ws/ws-server.js';
 import { startScheduler } from './server/jobs/scheduler.js';
 import { requestLogger } from './server/middleware/request-logger.js';
 import { errorHandler } from './server/middleware/error-handler.js';
 
-const browserDistFolder = join(import.meta.dirname, '../browser');
+const serverDistFolder = dirname(fileURLToPath(import.meta.url));
+const browserDistFolder = join(serverDistFolder, '../browser');
 
 const app = express();
 const angularApp = new AngularNodeAppEngine();

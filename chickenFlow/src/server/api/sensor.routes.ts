@@ -2,14 +2,13 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { sensorReadings, settings, doorEvents, cameraCaptures } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
 import multer from 'multer';
 import sharp from 'sharp';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { analyzeCapture } from '../services/claude.service.js';
-import type { SensorReadingRequest, DoorCommandRequest } from './types.js';
+import type { SensorReadingRequest } from './types.js';
 
 export const sensorRouter = Router();
 
@@ -17,11 +16,20 @@ export const sensorRouter = Router();
 sensorRouter.post('/sensor', (req, res, next) => {
   try {
     const body = req.body as SensorReadingRequest;
+
+    // ESP32 sends totalChickens=0 — fill from settings
+    let totalChickens = body.totalChickens;
+    if (!totalChickens) {
+      const row = db.select({ totalChickens: settings.totalChickens })
+        .from(settings).where(eq(settings.id, 1)).get();
+      totalChickens = row?.totalChickens ?? 10;
+    }
+
     db.insert(sensorReadings).values({
       distanceCm: body.distanceCm,
       irTriggered: body.irTriggered ?? false,
       chickensInside: body.chickensInside,
-      totalChickens: body.totalChickens,
+      totalChickens,
       doorState: body.doorState,
     }).run();
 
@@ -75,22 +83,23 @@ sensorRouter.post('/door-event', (req, res, next) => {
 });
 
 // ── ESP32 command poll ────────────────────────────────────────────────────────
-// Returns the pending command and atomically resets it to NONE.
+// Atomically reads and resets pendingCommand inside a serialized SQLite transaction.
 sensorRouter.get('/command', (_req, res, next) => {
   try {
-    const row = db.select({ pendingCommand: settings.pendingCommand })
-      .from(settings)
-      .where(eq(settings.id, 1))
-      .get();
-
-    const action = row?.pendingCommand ?? 'NONE';
-
-    if (action !== 'NONE') {
-      db.update(settings)
-        .set({ pendingCommand: 'NONE' })
+    const action = db.transaction((tx) => {
+      const row = tx.select({ pendingCommand: settings.pendingCommand })
+        .from(settings)
         .where(eq(settings.id, 1))
-        .run();
-    }
+        .get();
+      const cmd = row?.pendingCommand ?? 'NONE';
+      if (cmd !== 'NONE') {
+        tx.update(settings)
+          .set({ pendingCommand: 'NONE' })
+          .where(eq(settings.id, 1))
+          .run();
+      }
+      return cmd;
+    });
 
     res.json({ action, delay: 0 });
   } catch (err) {

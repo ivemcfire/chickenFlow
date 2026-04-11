@@ -69,7 +69,7 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
     door_state: telemetry.doorState,
     chickens_inside: telemetry.chickensInside,
     total_chickens: telemetry.totalChickens,
-    inside_percent: Math.round((telemetry.chickensInside / telemetry.totalChickens) * 100),
+    inside_percent: telemetry.totalChickens > 0 ? Math.round((telemetry.chickensInside / telemetry.totalChickens) * 100) : 0,
     weather_code: telemetry.weatherCode ?? null,
     temp_max_c: telemetry.tempMax ?? null,
     weather_lock_active: telemetry.weatherLock,
@@ -149,8 +149,8 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
     door_state: latestSensor?.doorState ?? 'UNKNOWN',
     chickens_inside: latestSensor?.chickensInside ?? 0,
     total_chickens: currentSettings?.totalChickens ?? 10,
-    inside_percent: latestSensor
-      ? Math.round((latestSensor.chickensInside / (currentSettings?.totalChickens ?? 10)) * 100)
+    inside_percent: latestSensor && (currentSettings?.totalChickens ?? 0) > 0
+      ? Math.round((latestSensor.chickensInside / (currentSettings!.totalChickens)) * 100)
       : 0,
     weather_code: todayWeather?.weatherCode ?? null,
     weather_lock_active: todayWeather?.isSevere ?? false,
@@ -211,12 +211,6 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
 
   const durationMs = Date.now() - startMs;
 
-  // Update the capture row with anomaly flag
-  db.update(cameraCaptures)
-    .set({ isAnomaly: anomalyDetected, threatType })
-    .where(eq(cameraCaptures.id, captureId))
-    .run();
-
   const logRow = db.insert(aiAnalysisLog).values({
     model: 'claude-sonnet-4-6',
     promptTokens,
@@ -237,9 +231,9 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
     durationMs,
   }).returning().get();
 
-  // Link capture → analysis log
+  // Update capture row: link to analysis log + set anomaly flag (single write)
   db.update(cameraCaptures)
-    .set({ aiAnalysisId: logRow.id })
+    .set({ aiAnalysisId: logRow.id, isAnomaly: anomalyDetected, threatType })
     .where(eq(cameraCaptures.id, captureId))
     .run();
 

@@ -38,8 +38,14 @@
 // ── Backend server ────────────────────────────────────────────────────────────
 // Set to your MetalLB IP or NodePort (http, NOT https — ESP32-CAM can't
 // handle modern TLS). Update after first k3s deploy.
-#define SERVER_HOST   "http://192.168.1.50"   // ← UPDATE THIS
+// Set to your MetalLB IP (port 80 maps to container 4000) or NodePort (30400).
+// If using NodePort without MetalLB, change to: "http://192.168.1.50:30400"
+#define SERVER_HOST   "http://192.168.1.50"     // ← UPDATE THIS
 #define SERVER_PORT   80                        // 80 (MetalLB) or 30400 (NodePort)
+
+// Set to 0 for production (disables Serial to free GPIO 1/3 for limit switches).
+// Set to 1 for bench debugging with FTDI adapter (limit switches won't work).
+#define ENABLE_SERIAL  0
 
 #define API_SENSOR       SERVER_HOST "/api/esp32/sensor"
 #define API_CAPTURE      SERVER_HOST "/api/esp32/capture"
@@ -71,3 +77,17 @@
 // IR sensor pulses LOW each time a chicken crosses the beam.
 // The backend tracks counts — this just reports the raw pulse event.
 #define IR_DEBOUNCE_MS      300
+
+// ── Debug logging macros ──────────────────────────────────────────────────────
+// When ENABLE_SERIAL is 0, all Serial output compiles to nothing.
+#if ENABLE_SERIAL
+  #define DBG_BEGIN(baud) Serial.begin(baud)
+  #define DBG(...)        Serial.print(__VA_ARGS__)
+  #define DBGLN(...)      Serial.println(__VA_ARGS__)
+  #define DBGF(...)       Serial.printf(__VA_ARGS__)
+#else
+  #define DBG_BEGIN(baud) ((void)0)
+  #define DBG(...)        ((void)0)
+  #define DBGLN(...)      ((void)0)
+  #define DBGF(...)       ((void)0)
+#endif
