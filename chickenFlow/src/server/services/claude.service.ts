@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'node:fs';
 import { db } from '../db/index.js';
 import { aiAnalysisLog, cameraCaptures, sensorReadings, settings, weatherCache } from '../db/schema.js';
@@ -6,7 +6,9 @@ import { eq, desc, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import type { AiAnalyzeResponse, ThreatType } from '../api/types.js';
 
-const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const ai = new GoogleGenAI({ apiKey: process.env['GEMINI_API_KEY'] });
+
+const MODEL = 'gemini-2.0-flash';
 
 // ── System prompts ────────────────────────────────────────────────────────────
 
@@ -87,17 +89,18 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
   let errorMessage: string | null = null;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 128,
-      system: TELEMETRY_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: userMessage,
+      config: {
+        systemInstruction: TELEMETRY_SYSTEM_PROMPT,
+        maxOutputTokens: 128,
+      },
     });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    analysisText = textBlock?.text ?? 'Analysis complete.';
-    promptTokens = response.usage.input_tokens;
-    completionTokens = response.usage.output_tokens;
+    analysisText = response.text ?? 'Analysis complete.';
+    promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
     isWarning = analysisText.startsWith('WARNING:') || telemetry.weatherLock;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
@@ -108,7 +111,7 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
   const durationMs = Date.now() - startMs;
 
   db.insert(aiAnalysisLog).values({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     promptTokens,
     completionTokens,
     hasImage: false,
@@ -167,29 +170,28 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
   let errorMessage: string | null = null;
 
   try {
-    const imageBuffer = readFileSync(filePath);
-    const base64Image = imageBuffer.toString('base64');
+    const base64Image = readFileSync(filePath).toString('base64');
 
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 256,
-      system: VISION_SYSTEM_PROMPT,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/jpeg', data: base64Image },
-          },
-          { type: 'text', text: JSON.stringify(telemetry, null, 2) },
-        ],
-      }],
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+            { text: JSON.stringify(telemetry, null, 2) },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: VISION_SYSTEM_PROMPT,
+        maxOutputTokens: 256,
+      },
     });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    const rawJson = textBlock?.text ?? '{}';
-    promptTokens = response.usage.input_tokens;
-    completionTokens = response.usage.output_tokens;
+    const rawJson = response.text ?? '{}';
+    promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
 
     const parsed = JSON.parse(rawJson) as {
       anomaly: boolean;
@@ -212,7 +214,7 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
   const durationMs = Date.now() - startMs;
 
   const logRow = db.insert(aiAnalysisLog).values({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     promptTokens,
     completionTokens,
     hasImage: true,

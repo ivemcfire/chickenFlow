@@ -33,7 +33,7 @@ spec:
             - configMapRef:
                 name: chickenflow-config
           env:
-            - name: ANTHROPIC_API_KEY
+            - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: ai-secret
