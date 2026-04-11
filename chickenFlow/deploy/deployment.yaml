@@ -8,7 +8,7 @@ metadata:
 spec:
   replicas: 1                        # MUST stay 1 — SQLite is single-writer
   strategy:
-    type: Recreate                   # Avoid RollingUpdate: two pods would fight over the .db file
+    type: Recreate                   # Avoid RollingUpdate: two pods fight over the .db file
   selector:
     matchLabels:
       app: chickenflow
@@ -18,24 +18,21 @@ spec:
         app: chickenflow
     spec:
       # Pin to the node where the local-path PVC was provisioned.
-      # Label the node first: kubectl label node <node-name> chickenflow/storage=true
+      # Label first: kubectl label node <node-name> chickenflow/storage=true
       nodeSelector:
         chickenflow/storage: "true"
 
       containers:
         - name: chickenflow
-          image: chickenflow:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/ivemcfire/chickenflow:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 4000
               name: http
+          envFrom:
+            - configMapRef:
+                name: chickenflow-config
           env:
-            - name: PORT
-              value: "4000"
-            - name: DB_PATH
-              value: "/data/chickenflow.db"
-            - name: CAPTURES_DIR
-              value: "/data/captures"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -55,14 +52,14 @@ spec:
             httpGet:
               path: /api/health
               port: 4000
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /api/health
               port: 4000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 20
             periodSeconds: 30
             failureThreshold: 5
 
