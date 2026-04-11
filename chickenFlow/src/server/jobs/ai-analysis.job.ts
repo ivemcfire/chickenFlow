@@ -1,0 +1,55 @@
+import { db } from '../db/index.js';
+import { sensorReadings, settings, weatherCache, statusMessages } from '../db/schema.js';
+import { eq, desc, sql } from 'drizzle-orm';
+import { analyzeCoopTelemetry } from '../services/claude.service.js';
+import { randomUUID } from 'node:crypto';
+
+export async function aiAnalysisJob(): Promise<void> {
+  console.log('[Job:ai-analysis] Running');
+  try {
+    const latestSensor = db.select().from(sensorReadings)
+      .orderBy(desc(sensorReadings.createdAt))
+      .limit(1)
+      .get();
+
+    const cfg = db.select().from(settings).where(eq(settings.id, 1)).get();
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayWeather = db.select().from(weatherCache)
+      .where(sql`${weatherCache.forecastDate} = ${todayStr}`)
+      .get();
+
+    const result = await analyzeCoopTelemetry({
+      currentTimeLocal: new Date().toLocaleTimeString(),
+      doorState: latestSensor?.doorState ?? 'UNKNOWN',
+      chickensInside: latestSensor?.chickensInside ?? 0,
+      totalChickens: cfg?.totalChickens ?? 10,
+      weatherCode: todayWeather?.weatherCode,
+      tempMax: todayWeather?.tempMax,
+      weatherLock: todayWeather?.isSevere ?? false,
+      serviceMode: cfg?.serviceMode ?? false,
+      obstructionDistance: latestSensor?.distanceCm,
+      sunriseLocal: todayWeather?.sunrise,
+      sunsetLocal: todayWeather?.sunset,
+      contextNote: 'Scheduled hourly analysis',
+    });
+
+    // Persist result as a status message so the Angular frontend sees it
+    if (result.analysisText) {
+      const now = new Date();
+      db.insert(statusMessages).values({
+        id: randomUUID(),
+        text: result.analysisText,
+        timestamp: now.toTimeString().split(' ')[0]!,
+        isWarning: result.isWarning,
+        isError: false,
+        isPinned: result.isWarning,
+        category: result.isWarning ? 'AI_WARNING' : 'AI_REPORT',
+      }).run();
+    }
+
+    console.log(`[Job:ai-analysis] Done. Warning=${result.isWarning}`);
+  } catch (err) {
+    console.error('[Job:ai-analysis] Failed:', (err as Error).message);
+  }
+}

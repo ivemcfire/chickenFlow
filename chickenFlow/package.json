@@ -9,7 +9,12 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
-    "serve:ssr:app": "node dist/app/server/server.mjs"
+    "serve:ssr:app": "node dist/app/server/server.mjs",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "docker:build": "docker build -t chickenflow:latest .",
+    "k3s:deploy": "kubectl apply -f deploy/"
   },
   "private": true,
   "dependencies": {

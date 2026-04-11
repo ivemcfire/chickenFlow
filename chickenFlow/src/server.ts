@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import {
   AngularNodeAppEngine,
   createNodeRequestHandler,
@@ -5,28 +6,27 @@ import {
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
 import express from 'express';
-import {join} from 'node:path';
+import { createServer } from 'node:http';
+import { join } from 'node:path';
+import { apiRouter } from './server/api/router.js';
+import { attachWebSocketServer } from './server/ws/ws-server.js';
+import { startScheduler } from './server/jobs/scheduler.js';
+import { requestLogger } from './server/middleware/request-logger.js';
+import { errorHandler } from './server/middleware/error-handler.js';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
 const angularApp = new AngularNodeAppEngine();
 
-/**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/{*splat}', (req, res) => {
- *   // Handle API request
- * });
- * ```
- */
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '4mb' }));   // handles ESP32-CAM frame size
+app.use(requestLogger);
 
-/**
- * Serve static files from /browser
- */
+// ── API routes (before static + Angular handler) ─────────────────────────────
+app.use('/api', apiRouter);
+
+// ── Static files ──────────────────────────────────────────────────────────────
 app.use(
   express.static(browserDistFolder, {
     maxAge: '1y',
@@ -35,9 +35,7 @@ app.use(
   }),
 );
 
-/**
- * Handle all other requests by rendering the Angular application.
- */
+// ── Angular SSR ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   angularApp
     .handle(req)
@@ -47,22 +45,23 @@ app.use((req, res, next) => {
     .catch(next);
 });
 
-/**
- * Start the server if this module is the main entry point, or it is ran via PM2.
- * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
- */
-if (isMainModule(import.meta.url) || process.env['pm_id']) {
-  const port = process.env['PORT'] || 4000;
-  app.listen(port, (error) => {
-    if (error) {
-      throw error;
-    }
+// ── Error handler (must be last) ──────────────────────────────────────────────
+app.use(errorHandler);
 
-    console.log(`Node Express server listening on http://localhost:${port}`);
+// ── Server startup ────────────────────────────────────────────────────────────
+if (isMainModule(import.meta.url) || process.env['pm_id']) {
+  const port = process.env['PORT'] ?? 4000;
+
+  // Wrap Express in http.Server so WebSocket can share the port
+  const httpServer = createServer(app);
+
+  attachWebSocketServer(httpServer);
+  startScheduler();
+
+  httpServer.listen(port, () => {
+    console.log(`ChickenFlow SSR + API listening on http://localhost:${port}`);
+    console.log(`WebSocket endpoint: ws://localhost:${port}/ws`);
   });
 }
 
-/**
- * Request handler used by the Angular CLI (for dev-server and during build) or Firebase Cloud Functions.
- */
 export const reqHandler = createNodeRequestHandler(app);

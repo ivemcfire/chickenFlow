@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chickenflow-backend
+  namespace: chickenflow
+  labels:
+    app: chickenflow
+spec:
+  replicas: 1                        # MUST stay 1 — SQLite is single-writer
+  strategy:
+    type: Recreate                   # Avoid RollingUpdate: two pods would fight over the .db file
+  selector:
+    matchLabels:
+      app: chickenflow
+  template:
+    metadata:
+      labels:
+        app: chickenflow
+    spec:
+      # Pin to the node where the local-path PVC was provisioned.
+      # Label the node first: kubectl label node <node-name> chickenflow/storage=true
+      nodeSelector:
+        chickenflow/storage: "true"
+
+      containers:
+        - name: chickenflow
+          image: chickenflow:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: PORT
+              value: "4000"
+            - name: DB_PATH
+              value: "/data/chickenflow.db"
+            - name: CAPTURES_DIR
+              value: "/data/captures"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-secret
+                  key: api-key
+          volumeMounts:
+            - name: db-storage
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 5
+
+      volumes:
+        - name: db-storage
+          persistentVolumeClaim:
+            claimName: chickenflow-db-pvc
