@@ -1,0 +1,7 @@
+chickenFlow/node_modules/
+chickenFlow/dist/
+chickenFlow/.angular/cache
+chickenFlow/chickenflow.db
+chickenFlow/chickenflow.db.probe
+chickenFlow/data/
+chickenFlow/.env
