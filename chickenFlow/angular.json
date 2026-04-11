@@ -19,9 +19,6 @@
         "build": {
           "builder": "@angular/build:application",
           "options": {
-            "define": {
-              "GEMINI_API_KEY": "'YOUR_GEMINI_API_KEY'"
-            },
             "browser": "src/main.ts",
             "tsConfig": "tsconfig.app.json",
             "assets": [
@@ -35,6 +32,17 @@
             ],
             "server": "src/main.server.ts",
             "outputMode": "server",
+            "externalDependencies": [
+              "better-sqlite3",
+              "sharp",
+              "@anthropic-ai/sdk",
+              "dotenv",
+              "drizzle-orm",
+              "drizzle-kit",
+              "multer",
+              "ws",
+              "node-cron"
+            ],
             "ssr": {
               "entry": "src/server.ts"
             }

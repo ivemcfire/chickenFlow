@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { doorEvents, settings } from '../db/schema.js';
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import type { DoorCommandRequest } from './types.js';
 
@@ -48,13 +48,13 @@ doorEventsRouter.post('/command', (req, res, next) => {
       .limit(1)
       .get();
 
-    const newState = body.command === 'OPEN' ? 'OPEN' : 'CLOSED';
+    const newState = body.command === 'OPEN' ? 'OPENING' : 'CLOSING';
 
     db.insert(doorEvents).values({
       fromState: current?.toState ?? 'UNKNOWN',
       toState: newState,
       trigger: body.trigger ?? 'manual',
-      isManual: true,
+      isManual: (body.trigger ?? 'manual') === 'manual',
       chickensInside: body.chickensInside,
       obstructionDistance: body.obstructionDistance,
     }).run();
@@ -68,7 +68,7 @@ doorEventsRouter.post('/command', (req, res, next) => {
     wsBroadcaster.broadcast('door:command_received', {
       command: body.command,
       trigger: body.trigger ?? 'manual',
-      isManual: true,
+      isManual: (body.trigger ?? 'manual') === 'manual',
     });
 
     res.status(201).json({ queued: body.command });

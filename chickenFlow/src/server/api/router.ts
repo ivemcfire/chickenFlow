@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
 import { sql } from 'drizzle-orm';
-import { writeFileSync } from 'node:fs';
+import { settings } from '../db/schema.js';
 import { settingsRouter } from './settings.routes.js';
 import { doorEventsRouter } from './door-events.routes.js';
 import { sensorRouter } from './sensor.routes.js';
@@ -15,9 +15,8 @@ export const apiRouter = Router();
 apiRouter.get('/health', (_req, res) => {
   try {
     db.run(sql`SELECT 1`);
-    // Verify the PVC mount is writable with a small probe write
-    const dbPath = process.env['DB_PATH'] ?? './chickenflow.db';
-    writeFileSync(dbPath + '.probe', 'ok');
+    // Verify SQLite write capability by touching the settings row
+    db.insert(settings).values({ id: 1 }).onConflictDoNothing().run();
     res.json({ status: 'ok', dbWritable: true });
   } catch {
     res.status(503).json({ status: 'error', dbWritable: false });
