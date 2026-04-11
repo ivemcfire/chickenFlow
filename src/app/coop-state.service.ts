@@ -32,6 +32,7 @@ export interface StatusMessage {
   timestamp: string;
   date: Date;
   isWarning: boolean;
+  isError: boolean;
   isPinned: boolean;
   category?: string;
 }
@@ -66,10 +67,11 @@ export class CoopStateService {
   smartNightLight = signal<boolean>(true);
   musicSignal = signal<boolean>(false);
   isReturning = signal<boolean>(false);
-  automaticDoor = signal<boolean>(true);
   serviceMode = signal<boolean>(false);
   manualOpenOverride = signal<boolean>(false);
   autoCloseTime = signal<string | null>(null);
+  warningCount = signal<number>(0);
+  errorCount = signal<number>(0);
   private lastManualAction = 0;
   private closeAttempts = 0;
   private herdingAttempts = 0;
@@ -93,7 +95,6 @@ export class CoopStateService {
     if (typeof window === 'undefined' || !window.localStorage) return;
     const state = {
       totalChickens: this.totalChickens(),
-      automaticDoor: this.automaticDoor(),
       serviceMode: this.serviceMode(),
       musicDuration: this.musicDuration(),
       smartNightLight: this.smartNightLight(),
@@ -109,7 +110,6 @@ export class CoopStateService {
       try {
         const state = JSON.parse(saved);
         if (state.totalChickens) this.totalChickens.set(state.totalChickens);
-        if (state.automaticDoor !== undefined) this.automaticDoor.set(state.automaticDoor);
         if (state.serviceMode !== undefined) this.serviceMode.set(state.serviceMode);
         if (state.musicDuration) this.musicDuration.set(state.musicDuration);
         if (state.smartNightLight !== undefined) this.smartNightLight.set(state.smartNightLight);
@@ -127,7 +127,7 @@ export class CoopStateService {
     }
   }
 
-  addStatusMessage(text: string, isWarning = false, isPinned = false, category?: string) {
+  addStatusMessage(text: string, isWarning = false, isPinned = false, category?: string, isError = false) {
     const now = new Date();
     const newMessage: StatusMessage = {
       id: Math.random().toString(36).substring(2, 9),
@@ -135,6 +135,7 @@ export class CoopStateService {
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       date: now,
       isWarning,
+      isError,
       isPinned,
       category
     };
@@ -144,6 +145,14 @@ export class CoopStateService {
       const updated = [newMessage, ...prev];
       return updated; // Removed slice limit to allow monthly logging
     });
+
+    if (isWarning) {
+      this.warningCount.update(c => c + 1);
+    }
+    if (isError) {
+      this.errorCount.update(c => c + 1);
+    }
+
     this.saveState();
   }
 
@@ -188,7 +197,6 @@ export class CoopStateService {
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
       this.currentTime.set(timeStr);
       
-      const isAuto = this.automaticDoor();
       const currentSunrise = this.sunrise();
       const currentSunset = this.sunset();
 
@@ -261,12 +269,8 @@ export class CoopStateService {
       }
 
       if (timeStr === sunsetMinus55m) {
-        if (isAuto && this.doorState() === DoorState.OPEN && this.herdingAttempts === 0) {
+        if (this.doorState() === DoorState.OPEN && this.herdingAttempts === 0) {
           this.checkHerdingProgress();
-        } else if (!isAuto && this.doorState() === DoorState.OPEN) {
-          this.musicSignal.set(false);
-          this.setDoorState(DoorState.CLOSED, false);
-          this.addStatusMessage("Sunset routine (Simple Mode): Securing coop.");
         }
       }
     };
@@ -568,7 +572,7 @@ export class CoopStateService {
       // Check for Automatic Door Closing (Smart Mode)
       const now = Date.now();
       const manualCooldown = 30000; // 30 seconds cooldown after manual action
-      if (this.automaticDoor() && currentState === DoorState.OPEN && (now - this.lastManualAction > manualCooldown)) {
+      if (currentState === DoorState.OPEN && (now - this.lastManualAction > manualCooldown)) {
         const insideCount = next.filter(c => c.x < 176).length;
         if (insideCount === next.length) {
           // All chickens are in!
@@ -610,7 +614,7 @@ export class CoopStateService {
 
     if (state === DoorState.ERROR) {
       this.distance.set(15); 
-      this.addStatusMessage("System Error: Door obstruction detected after 3 attempts!", true, true, 'SYSTEM_ERROR');
+      this.addStatusMessage("System Error: Door obstruction detected after 3 attempts!", false, true, 'SYSTEM_ERROR', true);
       this.triggerErrorAlerts();
     } else {
       this.distance.set(45);
@@ -709,6 +713,8 @@ export class CoopStateService {
   async runAIAnalysis(context = "") {
     if (this.serviceMode()) return;
     this.isAnalyzing.set(true);
+    this.warningCount.set(0);
+    this.errorCount.set(0);
     try {
       const insideCount = this.chickens().filter(c => c.x < 176).length;
       const total = this.totalChickens();

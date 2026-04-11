@@ -34,10 +34,11 @@ export class App {
   smartNightLight = this.coopService.smartNightLight;
   musicSignal = this.coopService.musicSignal;
   isReturning = this.coopService.isReturning;
-  automaticDoor = this.coopService.automaticDoor;
   serviceMode = this.coopService.serviceMode;
   manualOpenOverride = this.coopService.manualOpenOverride;
   autoCloseTime = this.coopService.autoCloseTime;
+  warningCount = this.coopService.warningCount;
+  errorCount = this.coopService.errorCount;
 
   showInfo = signal<boolean>(false);
   showResetInfo = signal<boolean>(false);
@@ -65,10 +66,6 @@ export class App {
 
   toggleMusic() {
     this.coopService.musicSignal.update(v => !v);
-  }
-
-  toggleAutomaticDoor() {
-    this.coopService.automaticDoor.update(v => !v);
   }
 
   toggleDisableAll() {

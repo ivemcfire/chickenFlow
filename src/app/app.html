@@ -38,6 +38,20 @@
           <div class="flex items-center gap-2">
             <mat-icon class="text-amber-500 text-sm">psychology</mat-icon>
             <h2 class="text-[10px] font-black text-stone-100 uppercase tracking-widest">AI Status Report</h2>
+            <div class="flex items-center gap-1.5 ml-2">
+              @if (errorCount() > 0) {
+                <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/30 text-[8px] font-bold text-red-500 animate-pulse">
+                  <mat-icon class="text-[10px] w-auto h-auto">error</mat-icon>
+                  {{ errorCount() }}
+                </span>
+              }
+              @if (warningCount() > 0) {
+                <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-[8px] font-bold text-amber-500">
+                  <mat-icon class="text-[10px] w-auto h-auto">warning</mat-icon>
+                  {{ warningCount() }}
+                </span>
+              }
+            </div>
           </div>
           <button (click)="refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group disabled:opacity-30 disabled:cursor-not-allowed">
             <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover:text-amber-500">refresh</mat-icon>
@@ -275,7 +289,7 @@
                   <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
                 </div>
                 <div class="flex flex-col">
-                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Manual Open Override</span>
+                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">DOOR OPEN</span>
                   @if (autoCloseTime()) {
                     <span class="text-[7px] text-amber-500 font-bold uppercase tracking-tighter animate-pulse">Auto-closing at {{ autoCloseTime() }}</span>
                   }
@@ -363,31 +377,6 @@
               </mat-icon>
             </div>
 
-            <div class="flex items-center justify-between pt-2 border-t border-stone-800/50" [class.opacity-50]="serviceMode()">
-              <label class="flex items-center gap-3 cursor-pointer group" [class.cursor-not-allowed]="serviceMode()">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="automaticDoor()" (change)="toggleAutomaticDoor()" [disabled]="serviceMode()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-                </div>
-                <div class="flex flex-col">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Automatic Door</span>
-                    <button (click)="toggleInfo(); $event.stopPropagation()" class="text-stone-600 hover:text-amber-500 transition-colors">
-                      <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
-                    </button>
-                  </div>
-                </div>
-              </label>
-              <div class="relative flex items-center justify-center w-6 h-6">
-                <mat-icon [class.text-amber-500]="automaticDoor()" [class.animate-pulse]="automaticDoor()" class="text-stone-700 text-lg transition-all">
-                  door_front
-                </mat-icon>
-                @if (automaticDoor()) {
-                  <span class="absolute text-[8px] font-black text-amber-500 bg-stone-950 px-1 rounded-sm border border-amber-500/30 -bottom-1.5 -right-1.5 shadow-sm">AI</span>
-                }
-              </div>
-            </div>
-
             <div class="flex items-center justify-between pt-2 border-t border-stone-800/50">
               <label class="flex items-center gap-3 cursor-pointer group">
                 <div class="relative">
@@ -421,9 +410,7 @@
             @if (showInfo()) {
               <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
                 <p class="text-[10px] leading-relaxed text-amber-200/80">
-                  <span class="font-bold text-amber-500">SMART MODE:</span> Active system will automatically secure the coop when all chickens are detected inside. 
-                  <br><br>
-                  <span class="font-bold text-amber-500">SIMPLE MODE:</span> Operates as a standard entrance, closing strictly at sunset ({{ sunset() }}) and opening at sunrise ({{ sunrise() }}).
+                  <span class="font-bold text-amber-500">SMART MODE:</span> System will automatically secure the coop when all chickens are detected inside. 
                 </p>
               </div>
             }

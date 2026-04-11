@@ -15,7 +15,6 @@ The system uses Angular Signals for reactive state management.
 ### Primary States:
 - **`doorState`**: Enum (`OPEN`, `CLOSED`, `OPENING`, `CLOSING`, `ERROR`).
 - **`serviceMode`**: Boolean. High-priority override. Includes a 4-hour "Abandonment Heartbeat" alarm.
-- **`automaticDoor`**: Boolean. Enables Smart Mode (immediate close on full count) or Solar Mode.
 - **`weatherLock`**: Boolean. AI-triggered lockdown for codes $\ge 65$ (Heavy Rain) or $\ge 82$ (Violent Showers).
 - **`chickens`**: Array of `Chicken` objects tracking position (`x`, `y`) and status (`isInside`).
 
@@ -33,11 +32,10 @@ The system uses Angular Signals for reactive state management.
     - If below 80%, re-initiates herding signal (music/light) for 5 minutes.
     - Cycle repeats up to **3 times**.
     - **Final Security Action**: If count remains below 80% after 3 attempts, the door closes for security. A "Flock Discrepancy" critical notification is logged.
-  - **Simple Mode**: Closes the door immediately at Sunset.
 - **Note**: This loop is paused when **Service Mode** is active.
 
 ### Smart Door Logic (`updateChickens`)
-- If `automaticDoor` is enabled and the door is `OPEN`, the system monitors `insideCount`.
+- The system monitors `insideCount`.
 - When `insideCount === totalChickens`, the door transitions to `CLOSED` immediately.
 
 ### Weather Monitoring (`fetchWeather`)
@@ -45,7 +43,7 @@ The system uses Angular Signals for reactive state management.
 
 ## 4. Manual Overrides & Priority
 
-### Manual Open Override (`manualOpenOverride`)
+### Door Open Override (`manualOpenOverride`)
 - **Night-time Safety**: If engaged between Sunset and Sunrise, a **30-minute safety timer** starts.
 - **Auto-Revert**: After 30 minutes, the door automatically closes and resets the toggle to OFF.
 - **Service Mode Logic**: If **Service Mode** is active, the 30-minute timer is disabled. However, if Service Mode persists > 4 hours, a "Maintenance Abandonment" alert triggers.
