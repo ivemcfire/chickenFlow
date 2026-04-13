@@ -14,18 +14,12 @@
  *   IR sensor    → GPIO  9   Top limit     → GPIO 12
  *   Buzzer       → GPIO 14   Status LED   → GPIO 15
  *   Coop light   → GPIO 16
- *
- * This board build disables camera support by default.
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "config.h"
-#if USE_CAMERA
-#include "esp_camera.h"
-#include "camera_init.h"
-#endif
 #include "music.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,7 +66,6 @@ void     startDoorMove(const char* direction);
 void     tickDoorMotor();
 void     reportDoorEvent(const char* fromState, const char* toState);
 void     postSensorReading();
-void     postCameraCapture();
 void     pollCommand();
 String   doorStateStr(DoorState s);
 void     blinkLed(int times, int delayMs = 150);
@@ -131,14 +124,6 @@ void setup() {
     DBGLN("[Door] Boot state: CLOSED (assumed — top limit not active)");
   }
   prevReportedState = doorState;
-
-#if USE_CAMERA
-  // ── Camera ─────────────────────────────────────────────────────────────────
-  if (!cameraInit()) {
-    DBGLN("[Camera] FAILED — running without camera");
-    blinkLed(3, 500);
-  }
-#endif
 
   // ── WiFi — connect with hardcoded credentials
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -212,14 +197,6 @@ void loop() {
     lastSensorPostMs = now;
     postSensorReading();
   }
-
-#if USE_CAMERA
-  // Post camera capture
-  if (now - lastCapturePostMs >= CAPTURE_POST_MS) {
-    lastCapturePostMs = now;
-    postCameraCapture();
-  }
-#endif
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -450,54 +427,6 @@ void postSensorReading() {
   DBGF("[Sensor] POST %d  dist=%.1fcm  inside=%d\n", code, dist, chickensInside);
   http.end();
 }
-
-#if USE_CAMERA
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/esp32/capture  (multipart/form-data)
-// ─────────────────────────────────────────────────────────────────────────────
-void postCameraCapture() {
-  camera_fb_t* fb = esp_camera_fb_get();
-  if (!fb) {
-    DBGLN("[Camera] Capture failed");
-    return;
-  }
-
-  HTTPClient http;
-  http.begin(API_CAPTURE);
-  http.setTimeout(HTTP_TIMEOUT_MS + 5000);
-
-  String boundary   = "----CFBoundary" + String(millis());
-  String partHeader =
-    "--" + boundary + "\r\n"
-    "Content-Disposition: form-data; name=\"image\"; filename=\"capture.jpg\"\r\n"
-    "Content-Type: image/jpeg\r\n\r\n";
-  String partFooter = "\r\n--" + boundary + "--\r\n";
-
-  size_t bodyLen = partHeader.length() + fb->len + partFooter.length();
-  uint8_t* body  = (uint8_t*)malloc(bodyLen);
-
-  if (!body) {
-    DBGLN("[Camera] malloc failed — frame too large?");
-    esp_camera_fb_return(fb);
-    http.end();
-    return;
-  }
-
-  size_t offset = 0;
-  memcpy(body + offset, partHeader.c_str(), partHeader.length()); offset += partHeader.length();
-  memcpy(body + offset, fb->buf,            fb->len);              offset += fb->len;
-  memcpy(body + offset, partFooter.c_str(), partFooter.length());
-
-  esp_camera_fb_return(fb);  // Return framebuffer ASAP
-
-  http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
-  int code = http.POST(body, bodyLen);
-  free(body);
-
-  DBGF("[Camera] Capture POST %d\n", code);
-  http.end();
-}
-#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/esp32/door-event

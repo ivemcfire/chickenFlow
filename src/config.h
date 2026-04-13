@@ -28,9 +28,6 @@
 #define PIN_LED_STATUS       15    // Status LED
 #define PIN_COOP_LIGHT       16    // Optional coop light / spare output
 
-// ── Optional camera support ──────────────────────────────────────────────────
-#define USE_CAMERA           0    // 0 = no camera on ESP32-S2 Mini board
-
 // ── LEDC buzzer channel ─────────────────────────────────────────────────────
 #define LEDC_BUZZER_CHANNEL    0
 #define LEDC_BUZZER_RESOLUTION 8     // 8-bit; tone() only uses frequency, not duty
@@ -64,7 +61,6 @@
 #define ENABLE_SERIAL  1
 
 #define API_SENSOR       SERVER_HOST "/api/esp32/sensor"
-#define API_CAPTURE      SERVER_HOST "/api/esp32/capture"
 #define API_DOOR_EVENT   SERVER_HOST "/api/esp32/door-event"
 #define API_COMMAND      SERVER_HOST "/api/esp32/command"
 
@@ -78,7 +74,6 @@
 // ── Timing ────────────────────────────────────────────────────────────────────
 #define COMMAND_POLL_MS    5000    // Poll /api/esp32/command
 #define SENSOR_POST_MS    10000    // POST sensor readings
-#define CAPTURE_POST_MS   60000    // POST camera image
 #define HTTP_TIMEOUT_MS    8000    // HTTP request timeout
 
 // ── Door motor ────────────────────────────────────────────────────────────────
