@@ -33,19 +33,18 @@
             "server": "src/main.server.ts",
             "outputMode": "server",
             "externalDependencies": [
-              "better-sqlite3",
               "sharp",
               "@anthropic-ai/sdk",
               "dotenv",
               "drizzle-orm",
               "drizzle-kit",
-              "multer",
               "ws",
               "node-cron"
             ],
             "ssr": {
               "entry": "src/server.ts"
-            }
+            },
+            "prerender": false
           },
           "configurations": {
             "production": {

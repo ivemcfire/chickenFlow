@@ -11,22 +11,19 @@ export async function weatherPollJob(): Promise<void> {
 
     // Check if today is severe and door is currently open → queue close
     const todayStr = new Date().toISOString().split('T')[0];
-    const today = db.select().from(weatherCache)
-      .where(sql`${weatherCache.forecastDate} = ${todayStr}`)
-      .get();
+    const [today] = await db.select().from(weatherCache)
+      .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 
     if (today?.isSevere) {
-      const latestDoor = db.select({ toState: doorEvents.toState })
+      const [latestDoor] = await db.select({ toState: doorEvents.toState })
         .from(doorEvents)
         .orderBy(desc(doorEvents.createdAt))
-        .limit(1)
-        .get();
+        .limit(1);
 
       if (latestDoor?.toState === 'OPEN') {
-        db.update(settings)
+        await db.update(settings)
           .set({ pendingCommand: 'CLOSE' })
-          .where(eq(settings.id, 1))
-          .run();
+          .where(eq(settings.id, 1));
 
         wsBroadcaster.broadcast('system:alert', {
           severity: 'warning',

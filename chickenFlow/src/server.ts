@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { apiRouter } from './server/api/router.js';
 import { attachWebSocketServer } from './server/ws/ws-server.js';
 import { startScheduler } from './server/jobs/scheduler.js';
+import { runMigrations } from './server/db/migrate.js';
 import { requestLogger } from './server/middleware/request-logger.js';
 import { errorHandler } from './server/middleware/error-handler.js';
 
@@ -22,7 +23,7 @@ const app = express();
 const angularApp = new AngularNodeAppEngine();
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '4mb' }));   // handles ESP32-CAM frame size
+app.use(express.json());
 app.use(requestLogger);
 
 // ── API routes (before static + Angular handler) ─────────────────────────────
@@ -36,6 +37,10 @@ app.use(
     redirect: false,
   }),
 );
+
+// ── AI snapshot captures (served for debugging / future gallery) ─────────────
+const capturesDir = process.env['CAPTURES_DIR'] ?? join(process.cwd(), 'data', 'captures');
+app.use('/captures', express.static(capturesDir, { maxAge: '1h' }));
 
 // ── Angular SSR ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -53,6 +58,9 @@ app.use(errorHandler);
 // ── Server startup ────────────────────────────────────────────────────────────
 if (isMainModule(import.meta.url) || process.env['pm_id']) {
   const port = process.env['PORT'] ?? 4000;
+
+  // Run DB migrations before accepting traffic
+  await runMigrations();
 
   // Wrap Express in http.Server so WebSocket can share the port
   const httpServer = createServer(app);

@@ -1,7 +1,9 @@
-import {ChangeDetectionStrategy, Component, inject, computed, signal} from '@angular/core';
+import {ChangeDetectionStrategy, Component, inject, computed, signal, OnInit, OnDestroy, PLATFORM_ID} from '@angular/core';
+import {isPlatformBrowser} from '@angular/common';
 import {CommonModule} from '@angular/common';
 import {MatIconModule} from '@angular/material/icon';
 import {CoopStateService, DoorState} from './coop-state.service';
+import {ApiService} from './api.service';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -10,8 +12,10 @@ import {CoopStateService, DoorState} from './coop-state.service';
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class App {
+export class App implements OnInit, OnDestroy {
   coopService = inject(CoopStateService);
+  private api = inject(ApiService);
+  private platformId = inject(PLATFORM_ID);
   DoorState = DoorState;
 
   chickens = this.coopService.chickens;
@@ -39,14 +43,32 @@ export class App {
   autoCloseTime = this.coopService.autoCloseTime;
   warningCount = this.coopService.warningCount;
   errorCount = this.coopService.errorCount;
+  latestCapture = this.coopService.latestCapture;
 
   showInfo = signal<boolean>(false);
   showResetInfo = signal<boolean>(false);
   showDisableInfo = signal<boolean>(false);
+  isCapturing = signal<boolean>(false);
+  camError = signal<boolean>(false);
+
+  // Timestamp-busted URL polled every 2 s for near-live view
+  private camTs = signal<number>(Date.now());
+  camSnapshotUrl = computed(() => `/api/camera/snapshot?t=${this.camTs()}`);
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   insideCount = computed(() => {
     return this.chickens().filter(c => c.x < 176).length; // Coop area boundary (DOOR_X)
   });
+
+  ngOnInit() {
+    if (isPlatformBrowser(this.platformId)) {
+      this.pollTimer = setInterval(() => this.camTs.set(Date.now()), 2000);
+    }
+  }
+
+  ngOnDestroy() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+  }
 
   setDoorState(state: DoorState) {
     this.coopService.setDoorState(state);
@@ -61,7 +83,9 @@ export class App {
   }
 
   toggleNightLight() {
-    this.coopService.smartNightLight.update(v => !v);
+    const next = !this.coopService.smartNightLight();
+    this.coopService.smartNightLight.set(next);
+    this.api.putSettings({ smartNightLight: next }).subscribe();
   }
 
   toggleMusic() {
@@ -69,16 +93,15 @@ export class App {
   }
 
   toggleDisableAll() {
-    this.coopService.serviceMode.update(v => {
-      const next = !v;
-      if (next) {
-        this.coopService.addStatusMessage("SYSTEM HALTED: Service Mode active. All automatic functions disabled.", true, true, 'SERVICE_MODE');
-      } else {
-        this.coopService.unpinCategory('SERVICE_MODE');
-        this.coopService.addStatusMessage("SYSTEM RESUMED: Service Mode deactivated.");
-      }
-      return next;
-    });
+    const next = !this.coopService.serviceMode();
+    this.coopService.serviceMode.set(next);
+    if (next) {
+      this.coopService.addStatusMessage("SYSTEM HALTED: Service Mode active. All automatic functions disabled.", true, true, 'SERVICE_MODE');
+    } else {
+      this.coopService.unpinCategory('SERVICE_MODE');
+      this.coopService.addStatusMessage("SYSTEM RESUMED: Service Mode deactivated.");
+    }
+    this.api.putSettings({ serviceMode: next }).subscribe();
   }
 
   toggleInfo() {
@@ -100,5 +123,22 @@ export class App {
 
   refreshAI() {
     this.coopService.runAIAnalysis("Manual refresh requested.");
+  }
+
+  takeSnapshot() {
+    if (this.isCapturing()) return;
+    this.isCapturing.set(true);
+    this.api.takeSnapshot().subscribe({
+      next: () => this.isCapturing.set(false),
+      error: () => this.isCapturing.set(false),
+    });
+  }
+
+  onCamError() {
+    this.camError.set(true);
+  }
+
+  onCamLoad() {
+    this.camError.set(false);
   }
 }

@@ -100,7 +100,7 @@
         <div class="flex justify-between items-center mb-4 px-2">
           <div class="flex flex-col">
             <span class="text-xs font-bold text-stone-400 uppercase tracking-wider">Coop & Yard Visualization</span>
-            <span class="text-[10px] text-amber-500/70 font-medium italic">IR Counting + Ultrasonic Safety</span>
+            <span class="text-[10px] text-amber-500/70 font-medium italic">IR Sensor Counting</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex flex-col items-end">
@@ -228,24 +228,75 @@
 
     <!-- Right Column: Controls -->
     <div class="space-y-6">
-      <!-- Live Camera Placeholder -->
-      <div class="glass-card overflow-hidden group">
-        <div class="bg-stone-900 h-48 flex items-center justify-center relative overflow-hidden">
-          <img src="https://picsum.photos/seed/happy-chicken/600/400" 
-               alt="Happy Chicken" 
-               class="absolute inset-0 w-full h-full object-cover opacity-40 grayscale group-hover:grayscale-0 transition-all duration-700"
-               referrerpolicy="no-referrer">
-          <div class="absolute inset-0 bg-stone-950/40 flex flex-col items-center justify-center p-4 text-center z-10">
-            <mat-icon class="text-stone-300 text-4xl mb-2 opacity-60">videocam_off</mat-icon>
-            <span class="text-stone-200 text-[10px] font-bold uppercase tracking-widest leading-tight max-w-[180px]">
-              low resolution feed from esp32-cam is unavailable
-            </span>
+      <!-- Live Camera Feed — cam01 -->
+      <div class="glass-card overflow-hidden">
+
+        <!-- Snapshot viewport — polled every 2 s from Frigate latest.jpg -->
+        <div class="bg-stone-950 h-48 relative overflow-hidden">
+
+          <img [src]="camSnapshotUrl()"
+               alt="cam01 live"
+               (error)="onCamError()"
+               (load)="onCamLoad()"
+               [class.hidden]="camError()"
+               class="absolute inset-0 w-full h-full object-cover">
+
+          <!-- Offline placeholder -->
+          @if (camError()) {
+            <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
+              <mat-icon class="text-stone-600 text-4xl">videocam_off</mat-icon>
+              <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">cam01 offline</span>
+            </div>
+          }
+
+          <!-- Anomaly ring from last AI snapshot -->
+          @if (latestCapture()?.isAnomaly) {
+            <div class="absolute inset-0 ring-2 ring-red-500 pointer-events-none z-10 animate-pulse"></div>
+          }
+
+          <!-- Status badge -->
+          <div class="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border border-white/5 bg-stone-900/80"
+               [class.text-emerald-400]="!camError()"
+               [class.text-stone-500]="camError()">
+            <span class="w-1.5 h-1.5 rounded-full"
+                  [class.bg-emerald-400]="!camError()"
+                  [class.animate-pulse]="!camError()"
+                  [class.bg-stone-600]="camError()"></span>
+            {{ camError() ? 'OFFLINE' : 'LIVE · cam01' }}
           </div>
-          <div class="absolute top-4 left-4 bg-stone-800/80 text-[10px] px-2 py-0.5 rounded font-bold text-stone-400 flex items-center gap-1 z-20 border border-white/5">
-            <span class="w-1.5 h-1.5 bg-stone-600 rounded-full"></span>
-            OFFLINE
-          </div>
+
+          <!-- Last AI snapshot threat banner -->
+          @if (latestCapture()?.threatType) {
+            <div class="absolute bottom-0 left-0 right-0 bg-red-900/90 text-red-200 text-[10px] font-bold uppercase tracking-widest px-2 py-1 text-center z-20">
+              THREAT: {{ latestCapture()!.threatType }}
+            </div>
+          }
         </div>
+
+        <!-- AI Snapshot button + last result -->
+        <div class="px-3 py-2 flex items-center justify-between gap-2 border-t border-stone-800/50">
+          <div class="flex-1 min-w-0">
+            @if (latestCapture()) {
+              <p class="text-[9px] text-stone-500 truncate">
+                Last snapshot · {{ latestCapture()!.doorStateAtCapture }}
+                @if (latestCapture()!.isAnomaly) {
+                  <span class="text-red-400 font-bold"> · ANOMALY</span>
+                }
+              </p>
+            } @else {
+              <p class="text-[9px] text-stone-600">No AI snapshot yet</p>
+            }
+          </div>
+          <button (click)="takeSnapshot()"
+                  [disabled]="isCapturing() || serviceMode()"
+                  class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <mat-icon [class.animate-spin]="isCapturing()" class="text-sm">
+              {{ isCapturing() ? 'refresh' : 'photo_camera' }}
+            </mat-icon>
+            {{ isCapturing() ? 'Analyzing…' : 'AI Snapshot' }}
+          </button>
+        </div>
+
       </div>
 
       <!-- 5-Day Weather Forecast -->

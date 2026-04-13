@@ -1,40 +1,37 @@
 import { db } from '../db/index.js';
 import { statusMessages, sensorReadings, cameraCaptures } from '../db/schema.js';
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 const capturesDir = process.env['CAPTURES_DIR'] ?? join(process.cwd(), 'data', 'captures');
 
-export function messageCleanupJob(): void {
+export async function messageCleanupJob(): Promise<void> {
   console.log('[Job:message-cleanup] Running');
 
   // Delete non-pinned status messages older than 30 days
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const deletedMessages = db.delete(statusMessages)
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const deletedMessages = await db.delete(statusMessages)
     .where(and(
       eq(statusMessages.isPinned, false),
       lt(statusMessages.createdAt, thirtyDaysAgo),
     ))
-    .returning({ id: statusMessages.id })
-    .all();
+    .returning({ id: statusMessages.id });
 
   // Delete sensor readings older than 7 days
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const deletedSensors = db.delete(sensorReadings)
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const deletedSensors = await db.delete(sensorReadings)
     .where(lt(sensorReadings.createdAt, sevenDaysAgo))
-    .returning({ id: sensorReadings.id })
-    .all();
+    .returning({ id: sensorReadings.id });
 
   // Delete non-anomaly captures older than 48 hours
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const staleCaptures = db.delete(cameraCaptures)
+  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const staleCaptures = await db.delete(cameraCaptures)
     .where(and(
       eq(cameraCaptures.isAnomaly, false),
       lt(cameraCaptures.createdAt, fortyEightHoursAgo),
     ))
-    .returning({ id: cameraCaptures.id, filePath: cameraCaptures.filePath })
-    .all();
+    .returning({ id: cameraCaptures.id, filePath: cameraCaptures.filePath });
 
   for (const capture of staleCaptures) {
     try {
@@ -45,13 +42,12 @@ export function messageCleanupJob(): void {
   }
 
   // Delete anomaly captures older than 30 days
-  const oldAnomalyCaptures = db.delete(cameraCaptures)
+  const oldAnomalyCaptures = await db.delete(cameraCaptures)
     .where(and(
       eq(cameraCaptures.isAnomaly, true),
       lt(cameraCaptures.createdAt, thirtyDaysAgo),
     ))
-    .returning({ id: cameraCaptures.id, filePath: cameraCaptures.filePath })
-    .all();
+    .returning({ id: cameraCaptures.id, filePath: cameraCaptures.filePath });
 
   for (const capture of oldAnomalyCaptures) {
     try {
@@ -64,14 +60,13 @@ export function messageCleanupJob(): void {
   // Unpin old non-critical alerts (older than today)
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  db.update(statusMessages)
+  await db.update(statusMessages)
     .set({ isPinned: false })
     .where(and(
       eq(statusMessages.isPinned, true),
       eq(statusMessages.isError, false),
-      lt(statusMessages.createdAt, todayStart.toISOString()),
-    ))
-    .run();
+      lt(statusMessages.createdAt, todayStart),
+    ));
 
   console.log(
     `[Job:message-cleanup] Deleted: ${deletedMessages.length} messages, ${deletedSensors.length} sensor rows, ` +

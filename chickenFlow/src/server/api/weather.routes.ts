@@ -5,26 +5,24 @@ import { gte, sql } from 'drizzle-orm';
 
 export const weatherRouter = Router();
 
-weatherRouter.get('/today', (_req, res, next) => {
+weatherRouter.get('/today', async (_req, res, next) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const row = db.select().from(weatherCache)
-      .where(sql`${weatherCache.forecastDate} = ${today}`)
-      .get();
+    const [row] = await db.select().from(weatherCache)
+      .where(sql`${weatherCache.forecastDate} = ${today}`);
     res.json(row ?? null);
   } catch (err) {
     next(err);
   }
 });
 
-weatherRouter.get('/forecast', (_req, res, next) => {
+weatherRouter.get('/forecast', async (_req, res, next) => {
   try {
     const today = new Date().toISOString().split('T')[0];
-    const rows = db.select().from(weatherCache)
+    const rows = await db.select().from(weatherCache)
       .where(gte(weatherCache.forecastDate, today!))
       .orderBy(weatherCache.forecastDate)
-      .limit(5)
-      .all();
+      .limit(5);
     res.json(rows);
   } catch (err) {
     next(err);

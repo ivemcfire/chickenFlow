@@ -1,5 +1,4 @@
 import { GoogleGenAI } from '@google/genai';
-import { readFileSync } from 'node:fs';
 import { db } from '../db/index.js';
 import { aiAnalysisLog, cameraCaptures, sensorReadings, settings, weatherCache } from '../db/schema.js';
 import { eq, desc, sql } from 'drizzle-orm';
@@ -34,7 +33,6 @@ Analyze the attached coop image alongside the provided telemetry JSON.
 Return ONLY valid JSON, no other text:
 {
   "anomaly": boolean,
-  "count_confirmed": boolean,
   "message": "15-25 word assessment",
   "threat_type": null | "predator" | "obstruction" | "injury"
 }
@@ -42,9 +40,9 @@ Return ONLY valid JSON, no other text:
 Rules:
 - Set anomaly: true immediately if you see a fox, raccoon, dog, cat, hawk, or any predator.
 - Set anomaly: true for a stuck door, visible obstruction, or injured bird.
-- count_confirmed: true if the visible chicken count matches chickens_inside in telemetry (±1 acceptable).
 - message must describe the most safety-critical observation first.
-- If the image is too dark or unclear to assess: anomaly: false, count_confirmed: false, message: "Image quality insufficient for analysis."`;
+- Do NOT count or verify chickens — chicken counting is handled by the IR sensor.
+- If the image is too dark or unclear to assess: anomaly: false, message: "Image quality insufficient for analysis."`;
 
 // ── Telemetry-only analysis ───────────────────────────────────────────────────
 
@@ -110,7 +108,7 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
 
   const durationMs = Date.now() - startMs;
 
-  db.insert(aiAnalysisLog).values({
+  await db.insert(aiAnalysisLog).values({
     model: MODEL,
     promptTokens,
     completionTokens,
@@ -128,25 +126,36 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
     isWarning,
     errorMessage,
     durationMs,
-  }).run();
+  });
 
   wsBroadcaster.broadcast('ai:analysis_complete', { analysisText, isWarning, durationMs });
 
   return { analysisText, isWarning, promptTokens, completionTokens, durationMs };
 }
 
+// ── IP cam snapshot fetch ─────────────────────────────────────────────────────
+
+export async function fetchCamSnapshot(): Promise<Buffer> {
+  const frigateUrl = process.env['FRIGATE_URL'];
+  const coopCam = process.env['FRIGATE_COOP_CAM'];
+  if (!frigateUrl || !coopCam) throw new Error('FRIGATE_URL / FRIGATE_COOP_CAM not configured');
+  const url = `${frigateUrl}/api/${coopCam}/latest.jpg`;
+  const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!resp.ok) throw new Error(`Frigate snapshot fetch failed: ${resp.status} ${resp.statusText}`);
+  return Buffer.from(await resp.arrayBuffer());
+}
+
 // ── Vision analysis (image + telemetry) ──────────────────────────────────────
 
-export async function analyzeCapture(captureId: number, filePath: string): Promise<void> {
+export async function analyzeCapture(captureId: number, imageBuffer: Buffer): Promise<void> {
   const startMs = Date.now();
 
   // Read current state from DB for telemetry snapshot
-  const latestSensor = db.select().from(sensorReadings).orderBy(desc(sensorReadings.createdAt)).limit(1).get();
-  const currentSettings = db.select().from(settings).where(eq(settings.id, 1)).get();
+  const [latestSensor] = await db.select().from(sensorReadings).orderBy(desc(sensorReadings.createdAt)).limit(1);
+  const [currentSettings] = await db.select().from(settings).where(eq(settings.id, 1));
   const todayStr = new Date().toISOString().split('T')[0];
-  const todayWeather = db.select().from(weatherCache)
-    .where(sql`${weatherCache.forecastDate} = ${todayStr}`)
-    .get();
+  const [todayWeather] = await db.select().from(weatherCache)
+    .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 
   const telemetry = {
     door_state: latestSensor?.doorState ?? 'UNKNOWN',
@@ -163,14 +172,13 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
 
   let anomalyDetected = false;
   let threatType: ThreatType = null;
-  let countConfirmed: boolean | null = null;
   let analysisText = 'Vision analysis unavailable.';
   let promptTokens = 0;
   let completionTokens = 0;
   let errorMessage: string | null = null;
 
   try {
-    const base64Image = readFileSync(filePath).toString('base64');
+    const base64Image = imageBuffer.toString('base64');
 
     const response = await ai.models.generateContent({
       model: MODEL,
@@ -195,14 +203,12 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
 
     const parsed = JSON.parse(rawJson) as {
       anomaly: boolean;
-      count_confirmed: boolean;
       message: string;
       threat_type: string | null;
     };
 
     anomalyDetected = parsed.anomaly ?? false;
     threatType = (parsed.threat_type as ThreatType) ?? null;
-    countConfirmed = parsed.count_confirmed ?? false;
     analysisText = parsed.message ?? 'Analysis complete.';
 
   } catch (err) {
@@ -213,7 +219,7 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
 
   const durationMs = Date.now() - startMs;
 
-  const logRow = db.insert(aiAnalysisLog).values({
+  const [logRow] = await db.insert(aiAnalysisLog).values({
     model: MODEL,
     promptTokens,
     completionTokens,
@@ -228,23 +234,20 @@ export async function analyzeCapture(captureId: number, filePath: string): Promi
     isWarning: anomalyDetected,
     anomalyDetected,
     threatType,
-    countConfirmed: countConfirmed ?? undefined,
     errorMessage,
     durationMs,
-  }).returning().get();
+  }).returning();
 
   // Update capture row: link to analysis log + set anomaly flag (single write)
-  db.update(cameraCaptures)
-    .set({ aiAnalysisId: logRow.id, isAnomaly: anomalyDetected, threatType })
-    .where(eq(cameraCaptures.id, captureId))
-    .run();
+  await db.update(cameraCaptures)
+    .set({ aiAnalysisId: logRow!.id, isAnomaly: anomalyDetected, threatType })
+    .where(eq(cameraCaptures.id, captureId));
 
   // If anomaly: queue a CLOSE command and broadcast alert
   if (anomalyDetected && threatType === 'predator') {
-    db.update(settings)
+    await db.update(settings)
       .set({ pendingCommand: 'CLOSE' })
-      .where(eq(settings.id, 1))
-      .run();
+      .where(eq(settings.id, 1));
 
     wsBroadcaster.broadcast('system:alert', {
       severity: 'error',

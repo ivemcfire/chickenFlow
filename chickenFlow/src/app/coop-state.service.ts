@@ -1,7 +1,7 @@
-import { Injectable, signal, inject, PLATFORM_ID } from '@angular/core';
+import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ApiService } from './api.service';
-import type { ApiWeatherDay } from './api.service';
+import type { ApiWeatherDay, ApiCaptureRow } from './api.service';
 
 export enum DoorState {
   OPEN = 'OPEN',
@@ -73,8 +73,9 @@ export class CoopStateService {
   serviceMode = signal<boolean>(false);
   manualOpenOverride = signal<boolean>(false);
   autoCloseTime = signal<string | null>(null);
-  warningCount = signal<number>(0);
-  errorCount = signal<number>(0);
+  warningCount = computed(() => this.statusMessages().filter(m => m.isWarning).length);
+  errorCount = computed(() => this.statusMessages().filter(m => m.isError).length);
+  latestCapture = signal<ApiCaptureRow | null>(null);
   private lastManualAction = 0;
   private herdingAttempts = 0;
 
@@ -108,12 +109,16 @@ export class CoopStateService {
       error: () => this.systemOnline.set(false),
     });
 
-    // Fetch door state
+    // Fetch door state and restore manual override
     this.api.getDoorState().subscribe({
       next: (d) => {
         const state = d.state as DoorState;
         if (Object.values(DoorState).includes(state)) {
           this.doorState.set(state);
+          // Restore manual override checkbox from persisted door state
+          if (state === DoorState.OPEN || state === DoorState.OPENING) {
+            this.manualOpenOverride.set(true);
+          }
         }
       },
     });
@@ -129,6 +134,11 @@ export class CoopStateService {
           this.irTriggered.set(s.irTriggered);
         }
       },
+    });
+
+    // Fetch latest camera capture
+    this.api.getLatestCapture().subscribe({
+      next: (c) => { if (c) this.latestCapture.set(c); },
     });
 
     // Health check
@@ -181,6 +191,11 @@ export class CoopStateService {
           }
           break;
         }
+        case 'camera:new_capture':
+          this.api.getLatestCapture().subscribe({
+            next: (c) => { if (c) this.latestCapture.set(c); },
+          });
+          break;
         case 'system:alert': {
           const p = msg.payload as { text: string; severity: string; category?: string; isPinned?: boolean };
           this.addStatusMessage(p.text, p.severity === 'error', p.isPinned ?? false, p.category, p.severity === 'error');
@@ -206,14 +221,11 @@ export class CoopStateService {
     };
 
     this.statusMessages.update(prev => [newMessage, ...prev]);
-
-    if (isWarning) this.warningCount.update(c => c + 1);
-    if (isError) this.errorCount.update(c => c + 1);
   }
 
   unpinCategory(category: string) {
     this.statusMessages.update(messages =>
-      messages.map(m => m.category === category ? { ...m, isPinned: false, isWarning: false } : m)
+      messages.map(m => m.category === category ? { ...m, isPinned: false, isWarning: false, isError: false } : m)
     );
   }
 
@@ -539,11 +551,12 @@ export class CoopStateService {
       obstructionDistance: this.distance(),
       contextNote: context || undefined,
     }).subscribe({
-      next: (res) => {
+      next: () => {
+        // Message is added by the ai:analysis_complete WebSocket broadcast — no duplicate here
         this.isAnalyzing.set(false);
-        this.addStatusMessage(res.analysisText, res.isWarning, res.isWarning);
       },
       error: () => {
+        // WS won't fire on HTTP error, so add message here only
         this.isAnalyzing.set(false);
         this.addStatusMessage('AI module offline. Manual monitoring advised.', true, true);
       },

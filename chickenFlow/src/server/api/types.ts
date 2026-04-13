@@ -21,8 +21,9 @@ export interface DoorCommandRequest {
 }
 
 export interface SensorReadingRequest {
-  distanceCm: number;
-  irTriggered: boolean;
+  distanceCm?: number;           // optional: S2 Mini uses topSensorTriggered instead of ultrasonic
+  topSensorTriggered?: boolean;  // door-open limit switch (pin 12)
+  irTriggered?: boolean;
   chickensInside: number;
   totalChickens: number;
   doorState: string;
@@ -57,7 +58,6 @@ export interface AiAnalyzeResponse {
   isWarning: boolean;
   anomalyDetected?: boolean;
   threatType?: ThreatType;
-  countConfirmed?: boolean;
   promptTokens: number;
   completionTokens: number;
   durationMs: number;

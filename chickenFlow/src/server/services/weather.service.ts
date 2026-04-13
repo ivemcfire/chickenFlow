@@ -18,7 +18,7 @@ interface OpenMeteoResponse {
 }
 
 export async function fetchAndCacheWeather(): Promise<void> {
-  const cfg = db.select().from(settings).where(eq(settings.id, 1)).get();
+  const [cfg] = await db.select().from(settings).where(eq(settings.id, 1));
   const lat = cfg?.locationLat ?? 51.5074;
   const lon = cfg?.locationLon ?? -0.1278;
 
@@ -38,11 +38,10 @@ export async function fetchAndCacheWeather(): Promise<void> {
     sunrise: sunrise[i]!,
     sunset: sunset[i]!,
     isSevere: SEVERE_CODES.has(weathercode[i]!),
-    fetchedAt: new Date().toISOString(),
   }));
 
   for (const row of rows) {
-    db.insert(weatherCache)
+    await db.insert(weatherCache)
       .values(row)
       .onConflictDoUpdate({
         target: weatherCache.forecastDate,
@@ -53,10 +52,9 @@ export async function fetchAndCacheWeather(): Promise<void> {
           sunrise: sql`excluded.sunrise`,
           sunset: sql`excluded.sunset`,
           isSevere: sql`excluded.is_severe`,
-          fetchedAt: sql`(datetime('now'))`,
+          fetchedAt: sql`now()`,
         },
-      })
-      .run();
+      });
   }
 
   const todayStr = new Date().toISOString().split('T')[0];

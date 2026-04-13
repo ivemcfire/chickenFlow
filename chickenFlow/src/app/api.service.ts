@@ -38,6 +38,20 @@ export interface ApiSensorReading {
   createdAt: string;
 }
 
+export interface ApiCaptureRow {
+  id: number;
+  filePath: string;
+  fileSizeBytes: number;
+  widthPx: number;
+  heightPx: number;
+  doorStateAtCapture: string;
+  chickensInsideAtCapture: number | null;
+  isAnomaly: boolean;
+  threatType: string | null;
+  aiAnalysisId: number | null;
+  createdAt: string;
+}
+
 export interface ApiAiResponse {
   analysisText: string;
   isWarning: boolean;
@@ -98,6 +112,14 @@ export class ApiService {
 
   getLatestSensor() {
     return this.http.get<ApiSensorReading | null>('/api/esp32/latest');
+  }
+
+  getLatestCapture() {
+    return this.http.get<ApiCaptureRow | null>('/api/camera/latest');
+  }
+
+  takeSnapshot() {
+    return this.http.post<{ id: number; ok: boolean }>('/api/ai/snapshot', {});
   }
 
   runAiAnalysis(body: {

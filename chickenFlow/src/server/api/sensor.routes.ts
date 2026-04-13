@@ -1,41 +1,38 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
-import { sensorReadings, settings, doorEvents, cameraCaptures } from '../db/schema.js';
+import { sensorReadings, settings, doorEvents } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
-import multer from 'multer';
-import sharp from 'sharp';
-import { join } from 'node:path';
-import { mkdirSync } from 'node:fs';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import { analyzeCapture } from '../services/claude.service.js';
 import type { SensorReadingRequest } from './types.js';
 
 export const sensorRouter = Router();
 
-// ── Sensor reading from ESP32 ─────────────────────────────────────────────────
-sensorRouter.post('/sensor', (req, res, next) => {
+// ── Sensor reading from ESP32-S2 Mini ────────────────────────────────────────
+sensorRouter.post('/sensor', async (req, res, next) => {
   try {
     const body = req.body as SensorReadingRequest;
 
     // ESP32 sends totalChickens=0 — fill from settings
     let totalChickens = body.totalChickens;
     if (!totalChickens) {
-      const row = db.select({ totalChickens: settings.totalChickens })
-        .from(settings).where(eq(settings.id, 1)).get();
+      const [row] = await db.select({ totalChickens: settings.totalChickens })
+        .from(settings).where(eq(settings.id, 1));
       totalChickens = row?.totalChickens ?? 10;
     }
 
-    db.insert(sensorReadings).values({
-      distanceCm: body.distanceCm,
+    await db.insert(sensorReadings).values({
+      distanceCm: body.distanceCm ?? null,
+      topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
       chickensInside: body.chickensInside,
       totalChickens,
       doorState: body.doorState,
-    }).run();
+    });
 
     wsBroadcaster.broadcast('sensor:reading', {
-      distanceCm: body.distanceCm,
-      irTriggered: body.irTriggered,
+      distanceCm: body.distanceCm ?? null,
+      topSensorTriggered: body.topSensorTriggered ?? false,
+      irTriggered: body.irTriggered ?? false,
       chickensInside: body.chickensInside,
       doorState: body.doorState,
     });
@@ -46,29 +43,28 @@ sensorRouter.post('/sensor', (req, res, next) => {
   }
 });
 
-sensorRouter.get('/latest', (_req, res, next) => {
+sensorRouter.get('/latest', async (_req, res, next) => {
   try {
-    const row = db.select().from(sensorReadings)
+    const [row] = await db.select().from(sensorReadings)
       .orderBy(desc(sensorReadings.createdAt))
-      .limit(1)
-      .get();
+      .limit(1);
     res.json(row ?? null);
   } catch (err) {
     next(err);
   }
 });
 
-// ── Door event from ESP32 ─────────────────────────────────────────────────────
-sensorRouter.post('/door-event', (req, res, next) => {
+// ── Door event from ESP32-S2 Mini ─────────────────────────────────────────────
+sensorRouter.post('/door-event', async (req, res, next) => {
   try {
     const body = req.body as { fromState: string; toState: string; chickensInside?: number };
-    db.insert(doorEvents).values({
+    await db.insert(doorEvents).values({
       fromState: body.fromState,
       toState: body.toState,
       trigger: 'esp32',
       isManual: false,
       chickensInside: body.chickensInside,
-    }).run();
+    });
 
     wsBroadcaster.broadcast('door:state_changed', {
       fromState: body.fromState,
@@ -83,106 +79,23 @@ sensorRouter.post('/door-event', (req, res, next) => {
 });
 
 // ── ESP32 command poll ────────────────────────────────────────────────────────
-// Atomically reads and resets pendingCommand inside a serialized SQLite transaction.
-sensorRouter.get('/command', (_req, res, next) => {
+// Reads and resets pendingCommand inside a transaction to prevent double-delivery.
+sensorRouter.get('/command', async (_req, res, next) => {
   try {
-    const action = db.transaction((tx) => {
-      const row = tx.select({ pendingCommand: settings.pendingCommand })
+    const action = await db.transaction(async (tx) => {
+      const [row] = await tx.select({ pendingCommand: settings.pendingCommand })
         .from(settings)
-        .where(eq(settings.id, 1))
-        .get();
+        .where(eq(settings.id, 1));
       const cmd = row?.pendingCommand ?? 'NONE';
       if (cmd !== 'NONE') {
-        tx.update(settings)
+        await tx.update(settings)
           .set({ pendingCommand: 'NONE' })
-          .where(eq(settings.id, 1))
-          .run();
+          .where(eq(settings.id, 1));
       }
       return cmd;
     });
 
     res.json({ action, delay: 0 });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ── Camera capture from ESP32 ─────────────────────────────────────────────────
-const capturesDir = process.env['CAPTURES_DIR'] ?? join(process.cwd(), 'data', 'captures');
-mkdirSync(capturesDir, { recursive: true });
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB
-  fileFilter: (_req, file, cb) => {
-    cb(null, file.mimetype === 'image/jpeg' || file.mimetype === 'image/jpg');
-  },
-});
-
-sensorRouter.post('/capture', upload.single('image'), async (req, res, next) => {
-  try {
-    if (!req.file) {
-      res.status(400).json({ error: 'BadRequest', message: 'No image field in request', statusCode: 400 });
-      return;
-    }
-
-    const timestamp = Date.now();
-    const fileName = `${timestamp}.jpg`;
-    const filePath = join(capturesDir, fileName);
-
-    // Resize to max 800px wide before saving
-    const metadata = await sharp(req.file.buffer)
-      .resize({ width: 800, withoutEnlargement: true })
-      .jpeg({ quality: 80 })
-      .toFile(filePath);
-
-    // Get current door state for snapshot
-    const latestDoor = db.select({ toState: doorEvents.toState })
-      .from(doorEvents)
-      .orderBy(desc(doorEvents.createdAt))
-      .limit(1)
-      .get();
-
-    const latestSensor = db.select()
-      .from(sensorReadings)
-      .orderBy(desc(sensorReadings.createdAt))
-      .limit(1)
-      .get();
-
-    const captureRow = db.insert(cameraCaptures).values({
-      filePath: fileName,
-      fileSizeBytes: metadata.size,
-      widthPx: metadata.width,
-      heightPx: metadata.height,
-      doorStateAtCapture: latestDoor?.toState ?? 'UNKNOWN',
-      chickensInsideAtCapture: latestSensor?.chickensInside,
-    }).returning().get();
-
-    wsBroadcaster.broadcast('camera:new_capture', {
-      id: captureRow.id,
-      filePath: captureRow.filePath,
-      doorState: captureRow.doorStateAtCapture,
-    });
-
-    // Trigger async vision analysis — don't block the ESP32 response
-    analyzeCapture(captureRow.id, filePath).catch((err: Error) =>
-      console.error('[Vision] Analysis failed for capture', captureRow.id, err.message)
-    );
-
-    res.status(201).json({ id: captureRow.id, ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ── Camera listing (for Angular frontend) ────────────────────────────────────
-sensorRouter.get('/latest-capture', (_req, res, next) => {
-  try {
-    const row = db.select().from(cameraCaptures)
-      .orderBy(desc(cameraCaptures.createdAt))
-      .limit(1)
-      .get();
-    res.json(row ?? null);
   } catch (err) {
     next(err);
   }

@@ -7,33 +7,31 @@ import type { DoorCommandRequest } from './types.js';
 
 export const doorEventsRouter = Router();
 
-doorEventsRouter.get('/state', (_req, res, next) => {
+doorEventsRouter.get('/state', async (_req, res, next) => {
   try {
-    const latest = db.select({ toState: doorEvents.toState })
+    const [latest] = await db.select({ toState: doorEvents.toState })
       .from(doorEvents)
       .orderBy(desc(doorEvents.createdAt))
-      .limit(1)
-      .get();
+      .limit(1);
     res.json({ state: latest?.toState ?? 'UNKNOWN' });
   } catch (err) {
     next(err);
   }
 });
 
-doorEventsRouter.get('/events', (req, res, next) => {
+doorEventsRouter.get('/events', async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query['limit'] ?? 50), 200);
-    const rows = db.select().from(doorEvents)
+    const rows = await db.select().from(doorEvents)
       .orderBy(desc(doorEvents.createdAt))
-      .limit(limit)
-      .all();
+      .limit(limit);
     res.json(rows);
   } catch (err) {
     next(err);
   }
 });
 
-doorEventsRouter.post('/command', (req, res, next) => {
+doorEventsRouter.post('/command', async (req, res, next) => {
   try {
     const body = req.body as DoorCommandRequest;
     if (!body.command || !['OPEN', 'CLOSE'].includes(body.command)) {
@@ -42,28 +40,26 @@ doorEventsRouter.post('/command', (req, res, next) => {
     }
 
     // Get current door state for the from_state
-    const current = db.select({ toState: doorEvents.toState })
+    const [current] = await db.select({ toState: doorEvents.toState })
       .from(doorEvents)
       .orderBy(desc(doorEvents.createdAt))
-      .limit(1)
-      .get();
+      .limit(1);
 
     const newState = body.command === 'OPEN' ? 'OPENING' : 'CLOSING';
 
-    db.insert(doorEvents).values({
+    await db.insert(doorEvents).values({
       fromState: current?.toState ?? 'UNKNOWN',
       toState: newState,
       trigger: body.trigger ?? 'manual',
       isManual: (body.trigger ?? 'manual') === 'manual',
       chickensInside: body.chickensInside,
       obstructionDistance: body.obstructionDistance,
-    }).run();
+    });
 
     // Queue command for ESP32 poll
-    db.update(settings)
+    await db.update(settings)
       .set({ pendingCommand: body.command })
-      .where(eq(settings.id, 1))
-      .run();
+      .where(eq(settings.id, 1));
 
     wsBroadcaster.broadcast('door:command_received', {
       command: body.command,

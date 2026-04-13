@@ -6,9 +6,9 @@ metadata:
   labels:
     app: chickenflow
 spec:
-  replicas: 1                        # MUST stay 1 — SQLite is single-writer
+  replicas: 1
   strategy:
-    type: Recreate                   # Avoid RollingUpdate: two pods fight over the .db file
+    type: RollingUpdate
   selector:
     matchLabels:
       app: chickenflow
@@ -17,11 +17,6 @@ spec:
       labels:
         app: chickenflow
     spec:
-      # Pin to the node where the local-path PVC was provisioned.
-      # Label first: kubectl label node <node-name> chickenflow/storage=true
-      nodeSelector:
-        chickenflow/storage: "true"
-
       containers:
         - name: chickenflow
           image: ghcr.io/ivemcfire/chickenflow:latest
@@ -38,8 +33,13 @@ spec:
                 secretKeyRef:
                   name: ai-secret
                   key: api-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chickenflow-db-secret
+                  key: url
           volumeMounts:
-            - name: db-storage
+            - name: captures-storage
               mountPath: /data
           resources:
             requests:
@@ -64,6 +64,6 @@ spec:
             failureThreshold: 5
 
       volumes:
-        - name: db-storage
+        - name: captures-storage
           persistentVolumeClaim:
             claimName: chickenflow-db-pvc

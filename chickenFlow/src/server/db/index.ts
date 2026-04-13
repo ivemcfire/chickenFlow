@@ -1,15 +1,8 @@
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { join } from 'node:path';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from './schema.js';
 
-const dbPath = process.env['DB_PATH'] ?? join(process.cwd(), 'chickenflow.db');
+const client = postgres(process.env['DATABASE_URL']!);
 
-const sqlite = new Database(dbPath);
-
-// WAL mode: concurrent reads during writes — critical for API + job scheduler on same event loop.
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('foreign_keys = ON');
-
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(client, { schema });
 export type DB = typeof db;
