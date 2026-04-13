@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chickenflow-backend
+  namespace: chickenflow
+  labels:
+    app: chickenflow
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: chickenflow
+  template:
+    metadata:
+      labels:
+        app: chickenflow
+    spec:
+      containers:
+        - name: chickenflow
+          image: ghcr.io/ivemcfire/chickenflow:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: chickenflow-config
+          env:
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-secret
+                  key: api-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: chickenflow-db-secret
+                  key: url
+          volumeMounts:
+            - name: captures-storage
+              mountPath: /data
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 5
+
+      volumes:
+        - name: captures-storage
+          persistentVolumeClaim:
+            claimName: chickenflow-db-pvc

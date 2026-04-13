@@ -1,0 +1,473 @@
+<div class="min-h-screen p-4 md:p-8 bg-stone-950 text-stone-100">
+  <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+    
+    <!-- Left Column: Animation & Status -->
+    <div class="lg:col-span-2 space-y-6">
+      <header class="flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-amber-500/10 rounded-xl border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/5">
+            <span class="text-2xl">🐥</span>
+          </div>
+          <div>
+            <h1 class="text-3xl font-extrabold tracking-tighter">
+              <span class="text-stone-100">CHICKEN</span><span class="text-amber-500">FLOW</span>
+            </h1>
+            <p class="text-stone-500 text-sm font-medium uppercase tracking-widest">AI CHICKENCOOP DOOR</p>
+          </div>
+        </div>
+        <div class="flex flex-col items-end gap-1">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 bg-amber-500/10 text-amber-400 px-4 py-1 rounded-full border border-amber-500/20 text-xs font-bold">
+              <span class="relative flex h-2 w-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              SYSTEM ONLINE
+            </div>
+            <button class="w-8 h-8 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-400 hover:text-amber-500 hover:border-amber-500/50 transition-all" title="User Account (Coming Soon)">
+              <mat-icon class="text-lg">account_circle</mat-icon>
+            </button>
+          </div>
+          <span class="text-[10px] text-stone-300 uppercase tracking-tight font-bold">RUNNING NORMAL SINCE {{ startTime() }}</span>
+        </div>
+      </header>
+
+      <!-- AI Status Report -->
+      <div class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[300px] flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <mat-icon class="text-amber-500 text-sm">psychology</mat-icon>
+            <h2 class="text-[10px] font-black text-stone-100 uppercase tracking-widest">AI Status Report</h2>
+            <div class="flex items-center gap-1.5 ml-2">
+              @if (errorCount() > 0) {
+                <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/30 text-[8px] font-bold text-red-500 animate-pulse">
+                  <mat-icon class="text-[10px] w-auto h-auto">error</mat-icon>
+                  {{ errorCount() }}
+                </span>
+              }
+              @if (warningCount() > 0) {
+                <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-[8px] font-bold text-amber-500">
+                  <mat-icon class="text-[10px] w-auto h-auto">warning</mat-icon>
+                  {{ warningCount() }}
+                </span>
+              }
+            </div>
+          </div>
+          <button (click)="refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group disabled:opacity-30 disabled:cursor-not-allowed">
+            <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover:text-amber-500">refresh</mat-icon>
+          </button>
+        </div>
+
+        <div class="flex-1 space-y-2 overflow-y-auto max-h-[240px] pr-2 custom-scrollbar">
+          @for (msg of statusMessages(); track msg.id) {
+            <div class="flex gap-3 p-2 rounded border transition-all"
+                 [class.bg-red-500/10]="msg.isWarning"
+                 [class.border-red-500/20]="msg.isWarning"
+                 [class.border-white/5]="!msg.isWarning"
+                 [class.bg-white/5]="msg.isPinned && !msg.isWarning">
+              <div class="flex flex-col items-center pt-0.5">
+                @if (msg.isPinned) {
+                  <mat-icon class="text-[10px] text-amber-500 h-3 w-3">push_pin</mat-icon>
+                } @else if (msg.isWarning) {
+                  <mat-icon class="text-[10px] text-red-500 h-3 w-3">warning</mat-icon>
+                } @else {
+                  <div class="w-1 h-1 rounded-full bg-stone-700 mt-1"></div>
+                }
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between mb-0.5">
+                  <span class="text-[8px] font-mono text-stone-500">{{ msg.timestamp }}</span>
+                  @if (msg.isWarning) {
+                    <span class="text-[7px] font-black text-red-500 uppercase tracking-tighter">Priority</span>
+                  }
+                </div>
+                <p class="text-sm leading-relaxed" [class.text-red-200]="msg.isWarning" [class.text-stone-300]="!msg.isWarning">
+                  {{ msg.text }}
+                </p>
+              </div>
+            </div>
+          } @empty {
+            <div class="flex flex-col items-center justify-center h-full opacity-30 py-10">
+              <mat-icon class="text-4xl mb-2">history</mat-icon>
+              <p class="text-[10px] uppercase font-bold tracking-widest">No logs recorded</p>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Top Down Animation View -->
+      <div class="glass-card p-6">
+        <div class="flex justify-between items-center mb-4 px-2">
+          <div class="flex flex-col">
+            <span class="text-xs font-bold text-stone-400 uppercase tracking-wider">Coop & Yard Visualization</span>
+            <span class="text-[10px] text-amber-500/70 font-medium italic">IR Sensor Counting</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex flex-col items-end">
+              <span [class]="'text-xs font-bold uppercase tracking-widest ' + 
+                (doorState() === DoorState.OPEN ? 'text-amber-400' : 
+                 doorState() === DoorState.CLOSED ? 'text-orange-500' : 
+                 doorState() === DoorState.CLOSING ? 'text-yellow-500 animate-pulse' :
+                 doorState() === DoorState.OPENING ? 'text-amber-500 animate-pulse' :
+                 doorState() === DoorState.ERROR ? 'text-red-500 animate-pulse' : 'text-yellow-400')">
+                {{ doorState() === DoorState.OPEN ? 'Day Mode: Open' : 
+                   doorState() === DoorState.CLOSED ? 'Night Mode: Secure' : 
+                   doorState() === DoorState.CLOSING ? 'System: Closing...' :
+                   doorState() === DoorState.OPENING ? 'System: Re-Opening...' :
+                   doorState() === DoorState.ERROR ? 'ALARM: Obstruction' : 'Transitioning...' }}
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        <div id="coop-viewport" class="relative w-full h-64 bg-stone-900 rounded-2xl overflow-hidden border-2 border-stone-800"
+             [class.error-glow]="doorState() === DoorState.ERROR">
+          
+          <!-- Yard Area (Right) - Green Grass -->
+          <div class="absolute inset-0 bg-emerald-900/40" style="background-image: radial-gradient(circle, #10b981 1px, transparent 1px); background-size: 12px 12px;"></div>
+          
+          <!-- Coop Area (Left) - Yellow Hay -->
+          <div class="absolute top-0 left-0 w-[176px] h-full bg-yellow-900/50 border-r-4 border-stone-800 z-10" style="background-image: repeating-linear-gradient(45deg, #a16207 0, #a16207 1px, transparent 0, transparent 50%); background-size: 6px 6px;">
+            <div class="absolute top-2 left-2 text-[8px] text-yellow-400 font-black uppercase tracking-widest bg-stone-950/60 px-1.5 py-0.5 rounded border border-yellow-500/20">Coop Interior (Hay)</div>
+          </div>
+
+          <!-- Yard Label -->
+          <div class="absolute top-2 right-4 text-[8px] text-emerald-400 font-black uppercase tracking-widest bg-stone-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20 z-10">Outdoor Yard (Grass)</div>
+
+          <!-- Walls -->
+          <div class="absolute left-[168px] top-0 w-8 h-[80px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+          <div class="absolute left-[168px] top-[160px] w-8 h-[96px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+
+          <!-- Door Frame (The Opening) -->
+          <div class="absolute left-[168px] top-[80px] w-8 h-[80px] border-x-2 border-stone-800 bg-stone-950/30 z-10"></div>
+
+          <!-- The Interactive Wooden Door (Opening: 80px to 160px) -->
+          <div class="absolute left-[166px] top-[80px] w-12 transition-all duration-1000 ease-in-out z-30 overflow-hidden rounded-sm border-2 border-amber-900/50 shadow-2xl"
+               [style.height.px]="(doorState() === DoorState.CLOSED || doorState() === DoorState.CLOSING) ? 80 : 0"
+               [class.shadow-orange-glow]="doorState() === DoorState.CLOSED || doorState() === DoorState.ERROR || doorState() === DoorState.CLOSING">
+            <!-- Rich Wooden Texture -->
+            <div class="w-full h-[80px] bg-amber-900" 
+                 style="background-image: repeating-linear-gradient(0deg, #451a03 0, #451a03 8px, #78350f 9px, #78350f 16px);">
+              <!-- Door Planks -->
+              <div class="absolute inset-0 flex justify-around opacity-30">
+                <div class="w-px h-full bg-black"></div>
+                <div class="w-px h-full bg-black"></div>
+                <div class="w-px h-full bg-black"></div>
+              </div>
+              <!-- Door Handle/Detail -->
+              <div class="absolute top-1/2 right-1 w-1.5 h-6 bg-stone-400 rounded-full shadow-inner opacity-80"></div>
+              <!-- Iron Reinforcements -->
+              <div class="absolute top-2 left-0 w-full h-1 bg-stone-800 opacity-60"></div>
+              <div class="absolute bottom-2 left-0 w-full h-1 bg-stone-800 opacity-60"></div>
+            </div>
+          </div>
+
+          <!-- Chickens -->
+          @for (chicken of chickens(); track chicken.id) {
+            <div class="absolute w-6 h-6 flex items-center justify-center z-20 chick-bob"
+                 [style.left.px]="chicken.x"
+                 [style.top.px]="chicken.y">
+              <span class="text-lg drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">🐥</span>
+            </div>
+          }
+
+          <!-- Interior Light Glow -->
+          @if (smartNightLight() && doorState() !== DoorState.OPEN) {
+            <div class="absolute top-0 left-0 w-[180px] h-full bg-amber-500/5 pointer-events-none"
+                 [class.animate-rapid-flash]="doorState() === DoorState.ERROR"></div>
+          }
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="glass-card p-4 text-center">
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">Chickens Home</p>
+          <h3 class="text-xl font-black text-stone-100">{{ insideCount() }}/{{ totalChickens() }}</h3>
+          <div class="mt-2 h-1 bg-stone-800 rounded-full overflow-hidden">
+            <div class="h-full bg-amber-500 transition-all duration-500" [style.width.%]="(insideCount() / totalChickens()) * 100"></div>
+          </div>
+        </div>
+        <div class="glass-card p-4 text-center relative overflow-hidden group">
+          <div class="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">Solar Cycle</p>
+          <div class="flex items-center justify-center gap-3">
+            <div class="flex flex-col items-center">
+              <mat-icon class="text-xs text-amber-500">wb_sunny</mat-icon>
+              <span class="text-xs font-black text-stone-100">{{ sunrise() }}</span>
+            </div>
+            <div class="w-px h-6 bg-stone-800"></div>
+            <div class="flex flex-col items-center">
+              <mat-icon class="text-xs text-stone-500">nights_stay</mat-icon>
+              <span class="text-xs font-black text-stone-100">{{ sunset() }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card p-4 text-center relative overflow-hidden group">
+          <div class="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">{{ solarTimerLabel() }}</p>
+          <h3 class="text-xl font-black text-stone-100 font-mono tracking-tighter">
+            {{ solarTimer() }}
+          </h3>
+          <div class="absolute bottom-0 left-0 h-0.5 bg-amber-500/30 w-full overflow-hidden">
+            <div class="h-full bg-amber-500 animate-pulse w-full"></div>
+          </div>
+        </div>
+        <div class="glass-card p-4 text-center flex flex-col justify-center items-center">
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">IR Sensor</p>
+          @if (insideCount() >= totalChickens()) {
+            <h3 class="text-xl font-black text-green-500">ALL IN</h3>
+          } @else {
+            <h3 class="text-sm font-black text-orange-500 leading-tight">
+              CHICKS ARE<br>OUTSIDE
+            </h3>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Controls -->
+    <div class="space-y-6">
+      <!-- Live Camera Feed — cam01 -->
+      <div class="glass-card overflow-hidden">
+
+        <!-- Snapshot viewport — polled every 2 s from Frigate latest.jpg -->
+        <div class="bg-stone-950 h-48 relative overflow-hidden">
+
+          <img [src]="camSnapshotUrl()"
+               alt="cam01 live"
+               (error)="onCamError()"
+               (load)="onCamLoad()"
+               [class.hidden]="camError()"
+               class="absolute inset-0 w-full h-full object-cover">
+
+          <!-- Offline placeholder -->
+          @if (camError()) {
+            <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
+              <mat-icon class="text-stone-600 text-4xl">videocam_off</mat-icon>
+              <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">cam01 offline</span>
+            </div>
+          }
+
+          <!-- Anomaly ring from last AI snapshot -->
+          @if (latestCapture()?.isAnomaly) {
+            <div class="absolute inset-0 ring-2 ring-red-500 pointer-events-none z-10 animate-pulse"></div>
+          }
+
+          <!-- Status badge -->
+          <div class="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border border-white/5 bg-stone-900/80"
+               [class.text-emerald-400]="!camError()"
+               [class.text-stone-500]="camError()">
+            <span class="w-1.5 h-1.5 rounded-full"
+                  [class.bg-emerald-400]="!camError()"
+                  [class.animate-pulse]="!camError()"
+                  [class.bg-stone-600]="camError()"></span>
+            {{ camError() ? 'OFFLINE' : 'LIVE · cam01' }}
+          </div>
+
+          <!-- Last AI snapshot threat banner -->
+          @if (latestCapture()?.threatType) {
+            <div class="absolute bottom-0 left-0 right-0 bg-red-900/90 text-red-200 text-[10px] font-bold uppercase tracking-widest px-2 py-1 text-center z-20">
+              THREAT: {{ latestCapture()!.threatType }}
+            </div>
+          }
+        </div>
+
+        <!-- AI Snapshot button + last result -->
+        <div class="px-3 py-2 flex items-center justify-between gap-2 border-t border-stone-800/50">
+          <div class="flex-1 min-w-0">
+            @if (latestCapture()) {
+              <p class="text-[9px] text-stone-500 truncate">
+                Last snapshot · {{ latestCapture()!.doorStateAtCapture }}
+                @if (latestCapture()!.isAnomaly) {
+                  <span class="text-red-400 font-bold"> · ANOMALY</span>
+                }
+              </p>
+            } @else {
+              <p class="text-[9px] text-stone-600">No AI snapshot yet</p>
+            }
+          </div>
+          <button (click)="takeSnapshot()"
+                  [disabled]="isCapturing() || serviceMode()"
+                  class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <mat-icon [class.animate-spin]="isCapturing()" class="text-sm">
+              {{ isCapturing() ? 'refresh' : 'photo_camera' }}
+            </mat-icon>
+            {{ isCapturing() ? 'Analyzing…' : 'AI Snapshot' }}
+          </button>
+        </div>
+
+      </div>
+
+      <!-- 5-Day Weather Forecast -->
+      <div class="glass-card p-6">
+        <h3 class="text-xs font-bold mb-6 text-stone-400 uppercase tracking-widest flex items-center gap-2">
+          <mat-icon class="text-sm">wb_sunny</mat-icon>
+          5-DAY WEATHER FORECAST
+        </h3>
+        <div class="grid grid-cols-5 gap-2">
+          @for (day of weatherForecast(); track day.day) {
+            <div class="flex flex-col items-center p-2 rounded-xl bg-stone-900/50 border border-stone-800/50">
+              <span class="text-[10px] font-bold text-stone-500 uppercase mb-2">{{ day.day }}</span>
+              <mat-icon class="text-amber-500 mb-2">{{ day.icon }}</mat-icon>
+              <span class="text-sm font-black text-stone-200">{{ day.temp }}°</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- AI Settings -->
+      <div class="glass-card p-6">
+        <h3 class="text-xs font-bold mb-4 text-stone-400 uppercase tracking-widest flex items-center gap-2">
+          <mat-icon class="text-sm">tune</mat-icon>
+          CHICKEN COOP SETTINGS
+        </h3>
+        <div class="space-y-6">
+          <div>
+            <div class="flex justify-between text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-3">
+              <span>Total Chickens</span>
+              <span class="text-amber-400">{{ totalChickens() }}</span>
+            </div>
+            <input type="number" [value]="totalChickens()" (change)="onTotalChickensChange($event)" [disabled]="serviceMode()"
+                   class="w-full bg-stone-900 border border-stone-800 rounded-lg px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          </div>
+
+          <div class="space-y-4 pt-2">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" class="sr-only peer" [checked]="manualOpenOverride()" (change)="toggleManualOpen()">
+                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">DOOR OPEN</span>
+                  @if (autoCloseTime()) {
+                    <span class="text-[7px] text-amber-500 font-bold uppercase tracking-tighter animate-pulse">Auto-closing at {{ autoCloseTime() }}</span>
+                  }
+                  @if (weatherLock()) {
+                    <span class="text-[7px] text-red-500 font-bold uppercase tracking-tighter">Override Lockdown</span>
+                  }
+                </div>
+              </label>
+              <div class="relative w-6 h-6 flex items-center justify-center">
+                <mat-icon [class.text-amber-500]="manualOpenOverride()" 
+                          [class.animate-door-slide-horizontal]="manualOpenOverride()" 
+                          class="text-stone-700 text-lg transition-all">
+                  {{ manualOpenOverride() ? 'sensor_door' : 'door_front' }}
+                </mat-icon>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <button (click)="manualChickenReturn()" 
+                        [disabled]="isReturning()"
+                        class="relative w-10 h-5 bg-stone-800 rounded-full transition-all active:scale-95 disabled:opacity-50 overflow-hidden">
+                  <div class="absolute inset-0 bg-amber-600 transition-transform duration-300"
+                       [class.translate-x-0]="isReturning()"
+                       [class.-translate-x-full]="!isReturning()"></div>
+                  <div class="absolute top-[2px] left-[2px] bg-white rounded-full h-4 w-4 transition-all"
+                       [class.translate-x-5]="isReturning()"></div>
+                </button>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Chickens Sensors Reset</span>
+                    <button (click)="toggleResetInfo()" class="text-stone-600 hover:text-amber-500 transition-colors">
+                      <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="text-lg" [class.animate-chicken-run]="isReturning()">
+                🐥
+              </div>
+            </div>
+
+            <!-- Reset Info Dialog -->
+            @if (showResetInfo()) {
+              <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <p class="text-[10px] leading-relaxed text-red-200/80">
+                  <span class="font-bold text-red-500 uppercase">Warning:</span> This option will reset all counters and sensors. Please get all chickens back to the coop first.
+                </p>
+              </div>
+            }
+          </div>
+          
+          <div class="pt-2 space-y-4">
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" class="sr-only peer" [checked]="smartNightLight()" (change)="toggleNightLight()">
+                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                </div>
+                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Smart Night-Light</span>
+              </label>
+              <mat-icon [class.text-amber-500]="smartNightLight()" 
+                        [class.bulb-glow]="smartNightLight()" 
+                        [class.animate-pulse]="smartNightLight() && doorState() !== DoorState.ERROR" 
+                        [class.animate-rapid-flash]="smartNightLight() && doorState() === DoorState.ERROR"
+                        class="text-stone-700 text-lg transition-all">
+                {{ smartNightLight() ? 'lightbulb' : 'lightbulb_outline' }}
+              </mat-icon>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" class="sr-only peer" [checked]="musicSignal()" (change)="toggleMusic()">
+                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                </div>
+                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Play Music Signal</span>
+              </label>
+              <mat-icon [class.text-amber-500]="musicSignal()" 
+                        [class.animate-music]="musicSignal() && doorState() !== DoorState.ERROR" 
+                        [class.animate-alert-pulse]="musicSignal() && doorState() === DoorState.ERROR"
+                        [class.text-red-500]="musicSignal() && doorState() === DoorState.ERROR"
+                        class="text-stone-700 text-lg transition-all">
+                {{ musicSignal() ? 'volume_up' : 'volume_off' }}
+              </mat-icon>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-stone-800/50">
+              <label class="flex items-center gap-3 cursor-pointer group">
+                <div class="relative">
+                  <input type="checkbox" class="sr-only peer" [checked]="serviceMode()" (change)="toggleDisableAll()">
+                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                </div>
+                <div class="flex flex-col">
+                  <div class="flex items-center gap-1">
+                    <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">SERVICE MODE</span>
+                    <button (click)="toggleDisableInfo(); $event.stopPropagation()" class="text-stone-600 hover:text-red-500 transition-colors">
+                      <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </label>
+              <mat-icon [class.text-red-500]="serviceMode()" [class.animate-pulse]="serviceMode()" class="text-stone-700 text-lg transition-all">
+                power_settings_new
+              </mat-icon>
+            </div>
+
+            <!-- Disable All Info Dialog -->
+            @if (showDisableInfo()) {
+              <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <p class="text-[10px] leading-relaxed text-red-200/80">
+                  <span class="font-bold text-red-500 uppercase">Service Mode:</span> this will disable all functions leaving only manual modes ON for testing or service
+                </p>
+              </div>
+            }
+
+            <!-- Mobile-Friendly Info Dialog -->
+            @if (showInfo()) {
+              <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <p class="text-[10px] leading-relaxed text-amber-200/80">
+                  <span class="font-bold text-amber-500">SMART MODE:</span> System will automatically secure the coop when all chickens are detected inside. 
+                </p>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,77 @@
+import 'dotenv/config';
+import {
+  AngularNodeAppEngine,
+  createNodeRequestHandler,
+  isMainModule,
+  writeResponseToNodeResponse,
+} from '@angular/ssr/node';
+import express from 'express';
+import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { apiRouter } from './server/api/router.js';
+import { attachWebSocketServer } from './server/ws/ws-server.js';
+import { startScheduler } from './server/jobs/scheduler.js';
+import { runMigrations } from './server/db/migrate.js';
+import { requestLogger } from './server/middleware/request-logger.js';
+import { errorHandler } from './server/middleware/error-handler.js';
+
+const serverDistFolder = dirname(fileURLToPath(import.meta.url));
+const browserDistFolder = join(serverDistFolder, '../browser');
+
+const app = express();
+const angularApp = new AngularNodeAppEngine();
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.use(express.json());
+app.use(requestLogger);
+
+// ── API routes (before static + Angular handler) ─────────────────────────────
+app.use('/api', apiRouter);
+
+// ── Static files ──────────────────────────────────────────────────────────────
+app.use(
+  express.static(browserDistFolder, {
+    maxAge: '1y',
+    index: false,
+    redirect: false,
+  }),
+);
+
+// ── AI snapshot captures (served for debugging / future gallery) ─────────────
+const capturesDir = process.env['CAPTURES_DIR'] ?? join(process.cwd(), 'data', 'captures');
+app.use('/captures', express.static(capturesDir, { maxAge: '1h' }));
+
+// ── Angular SSR ───────────────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  angularApp
+    .handle(req)
+    .then((response) =>
+      response ? writeResponseToNodeResponse(response, res) : next(),
+    )
+    .catch(next);
+});
+
+// ── Error handler (must be last) ──────────────────────────────────────────────
+app.use(errorHandler);
+
+// ── Server startup ────────────────────────────────────────────────────────────
+if (isMainModule(import.meta.url) || process.env['pm_id']) {
+  const port = process.env['PORT'] ?? 4000;
+
+  // Run DB migrations before accepting traffic
+  await runMigrations();
+
+  // Wrap Express in http.Server so WebSocket can share the port
+  const httpServer = createServer(app);
+
+  attachWebSocketServer(httpServer);
+  startScheduler();
+
+  httpServer.listen(port, () => {
+    console.log(`ChickenFlow SSR + API listening on http://localhost:${port}`);
+    console.log(`WebSocket endpoint: ws://localhost:${port}/ws`);
+  });
+}
+
+export const reqHandler = createNodeRequestHandler(app);

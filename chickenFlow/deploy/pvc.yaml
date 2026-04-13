@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chickenflow-db-pvc
+  namespace: chickenflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path   # k3s default — node-local SSD, NOT NFS
+  resources:
+    requests:
+      storage: 2Gi               # DB + ~2800 images (700KB avg) at 7-day rolling window

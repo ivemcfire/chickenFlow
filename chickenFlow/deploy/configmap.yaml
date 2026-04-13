@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chickenflow-config
+  namespace: chickenflow
+data:
+  PORT: "4000"
+  CAPTURES_DIR: "/data/captures"
+  FRIGATE_URL: "http://192.168.100.209:5000"
+  FRIGATE_COOP_CAM: "cam01"
