@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../../My Web Sites/chickenFlow/chickenFlow"
+		},
+		{
+			"name": "chickenFlow-ESP32",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
