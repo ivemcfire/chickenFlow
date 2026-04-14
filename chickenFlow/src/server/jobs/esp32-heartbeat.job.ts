@@ -6,6 +6,11 @@ import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 const OFFLINE_THRESHOLD_MS = 15 * 60 * 1000;
 
 let lastKnownOnline: boolean | null = null;
+let lastContactAt = 0;
+
+export function noteEsp32Contact(): void {
+  lastContactAt = Date.now();
+}
 
 export async function esp32HeartbeatJob(): Promise<void> {
   const [row] = await db.select({ createdAt: sensorReadings.createdAt })
@@ -13,7 +18,8 @@ export async function esp32HeartbeatJob(): Promise<void> {
     .orderBy(desc(sensorReadings.createdAt))
     .limit(1);
 
-  const lastSeen = row?.createdAt ? new Date(row.createdAt).getTime() : 0;
+  const sensorTs = row?.createdAt ? new Date(row.createdAt).getTime() : 0;
+  const lastSeen = Math.max(sensorTs, lastContactAt);
   const ageMs = Date.now() - lastSeen;
   const online = lastSeen > 0 && ageMs < OFFLINE_THRESHOLD_MS;
 
@@ -42,7 +48,14 @@ export async function esp32HeartbeatJob(): Promise<void> {
   }
 }
 
+export function getEsp32Status(): { online: boolean; lastSeen: string | null } {
+  const lastSeen = lastContactAt > 0 ? new Date(lastContactAt).toISOString() : null;
+  const online = lastContactAt > 0 && Date.now() - lastContactAt < OFFLINE_THRESHOLD_MS;
+  return { online, lastSeen };
+}
+
 export function markEsp32Online(): void {
+  noteEsp32Contact();
   if (lastKnownOnline === true) return;
   lastKnownOnline = true;
   wsBroadcaster.broadcast('esp32:status', { online: true, lastSeen: new Date().toISOString() });

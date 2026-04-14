@@ -113,16 +113,9 @@ export class CoopStateService {
       },
     });
 
-    // Seed ESP32 online state from latest sensor reading age (15 min threshold)
-    this.api.getLatestSensor().subscribe({
-      next: (row) => {
-        if (!row?.createdAt) {
-          this.systemOnline.set(false);
-          return;
-        }
-        const ageMs = Date.now() - new Date(row.createdAt).getTime();
-        this.systemOnline.set(ageMs < 15 * 60 * 1000);
-      },
+    // Seed ESP32 online state from live backend status (driven by command polls + sensor pings)
+    this.api.getEsp32Status().subscribe({
+      next: (s) => this.systemOnline.set(!!s?.online),
       error: () => this.systemOnline.set(false),
     });
 

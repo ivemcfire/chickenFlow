@@ -115,6 +115,10 @@ export class ApiService {
     return this.http.get<ApiSensorReading | null>('/api/esp32/latest');
   }
 
+  getEsp32Status() {
+    return this.http.get<{ online: boolean; lastSeen: string | null }>('/api/esp32/status');
+  }
+
   getLatestCapture() {
     return this.http.get<ApiCaptureRow | null>('/api/camera/latest');
   }

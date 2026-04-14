@@ -3,7 +3,7 @@ import { db } from '../db/index.js';
 import { sensorReadings, settings, doorEvents } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
+import { markEsp32Online, getEsp32Status } from '../jobs/esp32-heartbeat.job.js';
 import { assessObstruction } from '../services/claude.service.js';
 import type { SensorReadingRequest, ObstructionCheckRequest, ObstructionCheckResponse } from './types.js';
 
@@ -48,6 +48,10 @@ sensorRouter.post('/sensor', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+sensorRouter.get('/status', (_req, res) => {
+  res.json(getEsp32Status());
 });
 
 sensorRouter.get('/latest', async (_req, res, next) => {
