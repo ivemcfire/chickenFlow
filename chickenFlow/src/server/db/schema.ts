@@ -117,6 +117,17 @@ export const aiAnalysisLog = pgTable('ai_analysis_log', {
   index('ai_log_created_at_idx').on(t.createdAt),
 ]);
 
+// ── chicken_counts ────────────────────────────────────────────────────────────
+// Daily tally driven by MQTT coop/count events. `date` is Europe/Sofia local
+// YYYY-MM-DD (NOT UTC) so midnight rollover lines up with the coop's real day.
+export const chickenCounts = pgTable('chicken_counts', {
+  date: text('date').primaryKey(),
+  totalIn: integer('total_in').notNull().default(0),
+  totalOut: integer('total_out').notNull().default(0),
+  netInside: integer('net_inside').notNull().default(0),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ── camera_captures ───────────────────────────────────────────────────────────
 // IP cam (cam01) snapshot metadata. Non-anomaly pruned at 48h, anomaly at 30 days.
 export const cameraCaptures = pgTable('camera_captures', {

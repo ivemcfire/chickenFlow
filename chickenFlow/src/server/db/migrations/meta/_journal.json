@@ -15,6 +15,13 @@
       "when": 1776145681095,
       "tag": "0001_outstanding_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776240000000,
+      "tag": "0002_chicken_counts",
+      "breakpoints": true
     }
   ]
 }

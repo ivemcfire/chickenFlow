@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { apiRouter } from './server/api/router.js';
 import { attachWebSocketServer } from './server/ws/ws-server.js';
 import { startScheduler } from './server/jobs/scheduler.js';
+import { startMqttBridge } from './server/services/mqtt-bridge.service.js';
 import { runMigrations } from './server/db/migrate.js';
 import { requestLogger } from './server/middleware/request-logger.js';
 import { errorHandler } from './server/middleware/error-handler.js';
@@ -67,6 +68,7 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
 
   attachWebSocketServer(httpServer);
   startScheduler();
+  startMqttBridge();
 
   httpServer.listen(port, () => {
     console.log(`ChickenFlow SSR + API listening on http://localhost:${port}`);

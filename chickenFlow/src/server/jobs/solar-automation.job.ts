@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { settings, weatherCache, doorEvents } from '../db/schema.js';
 import { desc, eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
+import { publishDoorCommand } from '../services/mqtt-bridge.service.js';
 
 // Decides whether the door should currently be OPEN (day) or CLOSED (night)
 // based on today's sunrise/sunset, then queues a command for the ESP32 if the
@@ -46,6 +47,7 @@ export async function solarAutomationJob(): Promise<void> {
     .set({ pendingCommand: target })
     .where(eq(settings.id, 1));
 
+  publishDoorCommand(target, 'solar-auto');
   wsBroadcaster.broadcast('door:command_received', { command: target });
   wsBroadcaster.broadcast('system:alert', {
     severity: 'info',
