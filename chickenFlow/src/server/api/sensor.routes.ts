@@ -108,6 +108,7 @@ sensorRouter.post('/obstruction-check', async (req, res, next) => {
 // Reads and resets pendingCommand inside a transaction to prevent double-delivery.
 sensorRouter.get('/command', async (_req, res, next) => {
   try {
+    markEsp32Online();
     const action = await db.transaction(async (tx) => {
       const [row] = await tx.select({ pendingCommand: settings.pendingCommand })
         .from(settings)

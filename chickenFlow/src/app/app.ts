@@ -26,14 +26,17 @@ export class App implements OnInit, OnDestroy {
   weatherUpdatedAt = this.coopService.weatherUpdatedAt;
   doorStatusLabel = computed(() => {
     const st = this.doorState();
-    if (st === DoorState.OPENING) return 'SYSTEM: OPENING…';
-    if (st === DoorState.CLOSING) return 'SYSTEM: CLOSING…';
-    if (st === DoorState.ERROR)   return 'ALARM: OBSTRUCTION';
+    if (st === DoorState.ERROR) return 'ALARM: OBSTRUCTION';
 
-    const opened = st === DoorState.OPEN;
+    const opened = st === DoorState.OPEN || st === DoorState.OPENING;
+    const doorLabel = opened ? 'OPENED' : 'CLOSED';
+
+    if (this.serviceMode()) {
+      return `SYSTEM: SERVICE MODE - DOOR: ${doorLabel}`;
+    }
 
     if (this.manualOpenOverride()) {
-      return `SYSTEM: MANUAL MODE - DOOR IS ${opened ? 'OPENED' : 'CLOSED'}`;
+      return `SYSTEM: MANUAL MODE - DOOR: ${doorLabel}`;
     }
 
     const now = new Date();
@@ -41,7 +44,7 @@ export class App implements OnInit, OnDestroy {
     const ss = this.parseHHMM(this.sunset(), now);
     const isDay = now >= sr && now < ss;
     const mode = isDay ? 'DAY MODE' : 'NIGHT MODE';
-    return `SYSTEM: ${mode} - DOOR ${opened ? 'OPENED' : 'CLOSED'}`;
+    return `SYSTEM: ${mode} - DOOR: ${doorLabel}`;
   });
 
   private parseHHMM(hhmm: string, base: Date): Date {
@@ -87,6 +90,15 @@ export class App implements OnInit, OnDestroy {
   isReturning = this.coopService.isReturning;
   serviceMode = this.coopService.serviceMode;
   manualOpenOverride = this.coopService.manualOpenOverride;
+  manualOverrideExpiresAt = this.coopService.manualOverrideExpiresAt;
+  manualOverrideMinutesLeft = computed(() => {
+    this.currentTime();
+    const expiresAt = this.manualOverrideExpiresAt();
+    if (!expiresAt) return null;
+    const diffMs = expiresAt - Date.now();
+    if (diffMs <= 0) return 0;
+    return Math.ceil(diffMs / 60000);
+  });
   autoCloseTime = this.coopService.autoCloseTime;
   warningCount = this.coopService.warningCount;
   errorCount = this.coopService.errorCount;

@@ -125,6 +125,17 @@
                  doorState() === DoorState.ERROR ? 'text-red-500 animate-pulse' : 'text-yellow-400')">
                 {{ doorStatusLabel() }}
               </span>
+              @if (manualOpenOverride() && !serviceMode()) {
+                @if (manualOverrideMinutesLeft() !== null) {
+                  <span class="text-[9px] text-stone-400 italic mt-0.5">
+                    SYSTEM WILL RETURN TO AUTOMATIC MODE IN {{ manualOverrideMinutesLeft() }} min AND CLOSE THE DOOR FOR SECURITY
+                  </span>
+                } @else {
+                  <span class="text-[9px] text-stone-400 italic mt-0.5">
+                    SYSTEM WILL RETURN TO AUTOMATIC MODE IN THE EVENING
+                  </span>
+                }
+              }
             </div>
           </div>
         </div>

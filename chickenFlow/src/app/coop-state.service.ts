@@ -75,6 +75,8 @@ export class CoopStateService {
   isReturning = signal<boolean>(false);
   serviceMode = signal<boolean>(false);
   manualOpenOverride = signal<boolean>(false);
+  manualOverrideExpiresAt = signal<number | null>(null);
+  private manualOverrideTimer: ReturnType<typeof setTimeout> | null = null;
   autoCloseTime = signal<string | null>(null);
   warningCount = computed(() => this.statusMessages().filter(m => m.isWarning).length);
   errorCount = computed(() => this.statusMessages().filter(m => m.isError).length);
@@ -387,6 +389,7 @@ export class CoopStateService {
     } else {
       if (state === DoorState.CLOSED) {
         this.manualOpenOverride.set(false);
+        this.clearManualOverrideTimer();
       }
     }
 
@@ -428,9 +431,41 @@ export class CoopStateService {
     this.manualOpenOverride.set(target);
     if (target) {
       this.setDoorState(DoorState.OPEN, true);
+      this.scheduleManualOverrideExpiry();
     } else {
+      this.clearManualOverrideTimer();
       this.setDoorState(DoorState.CLOSED, true);
     }
+  }
+
+  private scheduleManualOverrideExpiry() {
+    this.clearManualOverrideTimer();
+    const now = new Date();
+    const sr = this.parseTime(this.sunrise(), now);
+    const ss = this.parseTime(this.sunset(), now);
+    const isNight = now < sr || now >= ss;
+    if (!isNight) {
+      // Day mode: sunset's automatic close will clear the override naturally.
+      this.manualOverrideExpiresAt.set(null);
+      return;
+    }
+    const expiresAt = Date.now() + 30 * 60 * 1000;
+    this.manualOverrideExpiresAt.set(expiresAt);
+    this.manualOverrideTimer = setTimeout(() => {
+      this.manualOverrideTimer = null;
+      this.manualOverrideExpiresAt.set(null);
+      this.manualOpenOverride.set(false);
+      this.setDoorState(DoorState.CLOSED, false);
+      this.addStatusMessage('Manual override expired — closing door for security.', false, false);
+    }, 30 * 60 * 1000);
+  }
+
+  private clearManualOverrideTimer() {
+    if (this.manualOverrideTimer) {
+      clearTimeout(this.manualOverrideTimer);
+      this.manualOverrideTimer = null;
+    }
+    this.manualOverrideExpiresAt.set(null);
   }
 
   // ── Chicken animation (visual only — state from backend) ──────────────────
