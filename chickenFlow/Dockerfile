@@ -8,7 +8,6 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 RUN npm run build
-RUN npx drizzle-kit generate
 
 # ── Stage 2: Runtime ───────────────────────────────────────────────────────────
 FROM node:22-alpine
