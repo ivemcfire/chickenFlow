@@ -22,7 +22,10 @@
 #define PIN_MOTOR_CLOSE       7    // HIGH = energise close direction  (L298N IN2)
 #define PIN_ULTRASONIC_TRIG   4    // Pulse HIGH 10 µs to trigger ultrasonic measurement
 #define PIN_ULTRASONIC_ECHO   8    // Measures HIGH pulse duration ∝ distance
-#define PIN_IR_SENSOR         9    // LOW = chicken crossing beam
+#define PIN_IR_SENSOR_A       9    // Tunnel beam A (coop side)  — LOW = broken
+#define PIN_IR_SENSOR_B      10    // Tunnel beam B (yard side)  — LOW = broken
+// Legacy single-beam alias (kept so any existing reference still compiles).
+#define PIN_IR_SENSOR         PIN_IR_SENSOR_A
 #define PIN_LIMIT_TOP        12    // LOW = door fully open (top limit switch)
 #define PIN_BUZZER           14    // Passive buzzer — PWM output
 #define PIN_LED_STATUS       15    // Status LED
@@ -54,9 +57,10 @@
 // ENABLE_SERIAL is safe on ESP32-S2 Mini via native USB CDC serial.
 #define ENABLE_SERIAL  1
 
-#define API_SENSOR       SERVER_HOST "/api/esp32/sensor"
-#define API_DOOR_EVENT   SERVER_HOST "/api/esp32/door-event"
-#define API_COMMAND      SERVER_HOST "/api/esp32/command"
+#define API_SENSOR            SERVER_HOST "/api/esp32/sensor"
+#define API_DOOR_EVENT        SERVER_HOST "/api/esp32/door-event"
+#define API_COMMAND           SERVER_HOST "/api/esp32/command"
+#define API_OBSTRUCTION_CHECK SERVER_HOST "/api/esp32/obstruction-check"
 
 // ── WiFiManager AP (first-boot config portal) ────────────────────────────────
 // On first boot — or whenever stored credentials fail — the board broadcasts
@@ -81,8 +85,21 @@
 #define OBSTRUCTION_CM       20    // Distance < this = obstruction during close
 #define ULTRASONIC_SAMPLES    5    // Median of N readings per measurement
 
-// ── Chicken counting (IR) ─────────────────────────────────────────────────────
-#define IR_DEBOUNCE_MS      300    // Ignore re-triggers within this window (ms)
+// ── Chicken counting (dual-IR tunnel) ────────────────────────────────────────
+// Two IR break-beams in a short tunnel. Event order gives direction:
+//   A→B = OUT (coop → yard)
+//   B→A = IN  (yard → coop)
+// Any single beam trip with no follow-through inside IR_TUNNEL_TIMEOUT_MS
+// is discarded (partial approach, leaf, etc.).
+#define IR_DEBOUNCE_MS          150    // Per-beam debounce
+#define IR_TUNNEL_TIMEOUT_MS   2000    // Max gap between beam A and beam B
+
+// ── AI obstruction gate ──────────────────────────────────────────────────────
+// After a local ultrasonic stop, the firmware asks the backend to verify.
+// Backend runs Gemini vision on a Frigate snapshot and returns { abort }.
+// abort=true (≥80% confidence) → go to ERROR immediately (skip retries).
+// abort=false                  → resume close cycle (retry like normal).
+#define OBSTRUCTION_CHECK_TIMEOUT_MS  10000
 
 // ── Debug logging macros ──────────────────────────────────────────────────────
 // ENABLE_SERIAL must stay 0 (GPIO 1 is buzzer hardware). These compile to

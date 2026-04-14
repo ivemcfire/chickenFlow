@@ -21,12 +21,25 @@ export interface DoorCommandRequest {
 }
 
 export interface SensorReadingRequest {
-  distanceCm?: number;           // optional: S2 Mini uses topSensorTriggered instead of ultrasonic
+  distanceCm?: number;
   topSensorTriggered?: boolean;  // door-open limit switch (pin 12)
-  irTriggered?: boolean;
+  irTriggered?: boolean;         // legacy single-beam field
+  irATriggered?: boolean;        // tunnel beam A (coop side)
+  irBTriggered?: boolean;        // tunnel beam B (yard side)
   chickensInside: number;
   totalChickens: number;
   doorState: string;
+}
+
+export interface ObstructionCheckRequest {
+  distanceCm: number;
+  doorState: string;
+}
+
+export interface ObstructionCheckResponse {
+  abort: boolean;       // true = confidence >= 80%, door should ERROR; false = retry
+  confidence: number;   // 0..1
+  reason: string;
 }
 
 export interface StatusMessageRequest {
@@ -82,7 +95,8 @@ export type WsEventName =
   | 'system:message'
   | 'weather:updated'
   | 'ai:analysis_complete'
-  | 'camera:new_capture';
+  | 'camera:new_capture'
+  | 'esp32:status';
 
 export interface WsEnvelope {
   event: WsEventName;

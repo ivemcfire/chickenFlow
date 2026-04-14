@@ -22,6 +22,47 @@ export class App implements OnInit, OnDestroy {
   doorState = this.coopService.doorState;
   currentTime = this.coopService.currentTime;
   weatherForecast = this.coopService.weatherForecast;
+  weatherLocation = this.coopService.weatherLocation;
+  weatherUpdatedAt = this.coopService.weatherUpdatedAt;
+  doorStatusLabel = computed(() => {
+    const st = this.doorState();
+    if (st === DoorState.OPENING) return 'SYSTEM: OPENING…';
+    if (st === DoorState.CLOSING) return 'SYSTEM: CLOSING…';
+    if (st === DoorState.ERROR)   return 'ALARM: OBSTRUCTION';
+
+    const opened = st === DoorState.OPEN;
+
+    if (this.manualOpenOverride()) {
+      return `SYSTEM: MANUAL MODE - DOOR IS ${opened ? 'OPENED' : 'CLOSED'}`;
+    }
+
+    const now = new Date();
+    const sr = this.parseHHMM(this.sunrise(), now);
+    const ss = this.parseHHMM(this.sunset(), now);
+    const isDay = now >= sr && now < ss;
+    const mode = isDay ? 'DAY MODE' : 'NIGHT MODE';
+    return `SYSTEM: ${mode} - DOOR ${opened ? 'OPENED' : 'CLOSED'}`;
+  });
+
+  private parseHHMM(hhmm: string, base: Date): Date {
+    const [h, m] = hhmm.split(':').map(Number);
+    const d = new Date(base);
+    d.setHours(h || 0, m || 0, 0, 0);
+    return d;
+  }
+
+  weatherSubtitle = computed(() => {
+    const loc = this.weatherLocation();
+    const ts = this.weatherUpdatedAt();
+    const t = ts ? new Date(ts) : null;
+    if (!t || isNaN(t.getTime())) return loc;
+    const dd = String(t.getDate()).padStart(2, '0');
+    const mm = String(t.getMonth() + 1).padStart(2, '0');
+    const yyyy = t.getFullYear();
+    const hh = String(t.getHours()).padStart(2, '0');
+    const mi = String(t.getMinutes()).padStart(2, '0');
+    return `${loc} ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+  });
   sunrise = this.coopService.sunrise;
   sunset = this.coopService.sunset;
   solarTimer = this.coopService.solarTimer;
@@ -30,6 +71,12 @@ export class App implements OnInit, OnDestroy {
   startTime = this.coopService.startTime;
   distance = this.coopService.distance;
   systemOnline = this.coopService.systemOnline;
+  backendOnline = this.coopService.backendOnline;
+  headerStatusLine = computed(() => {
+    if (!this.backendOnline()) return 'NO CONNECTION TO THE SERVER';
+    if (!this.systemOnline()) return 'NO CONNECTION TO THE COOP CONTROLLER';
+    return `RUNNING NORMAL SINCE ${this.startTime()}`;
+  });
   totalChickens = this.coopService.totalChickens;
   statusMessages = computed(() => this.coopService.getDisplayMessages());
   isAnalyzing = this.coopService.isAnalyzing;
@@ -43,12 +90,9 @@ export class App implements OnInit, OnDestroy {
   autoCloseTime = this.coopService.autoCloseTime;
   warningCount = this.coopService.warningCount;
   errorCount = this.coopService.errorCount;
-  latestCapture = this.coopService.latestCapture;
-
   showInfo = signal<boolean>(false);
   showResetInfo = signal<boolean>(false);
   showDisableInfo = signal<boolean>(false);
-  isCapturing = signal<boolean>(false);
   camError = signal<boolean>(false);
 
   // Timestamp-busted URL polled every 2 s for near-live view
@@ -96,10 +140,10 @@ export class App implements OnInit, OnDestroy {
     const next = !this.coopService.serviceMode();
     this.coopService.serviceMode.set(next);
     if (next) {
-      this.coopService.addStatusMessage("SYSTEM HALTED: Service Mode active. All automatic functions disabled.", true, true, 'SERVICE_MODE');
+      this.coopService.addStatusMessage('Service Mode ON — automatic door is paused.', true, true, 'SERVICE_MODE');
     } else {
       this.coopService.unpinCategory('SERVICE_MODE');
-      this.coopService.addStatusMessage("SYSTEM RESUMED: Service Mode deactivated.");
+      this.coopService.addStatusMessage('Service Mode OFF — automatic door resumed.');
     }
     this.api.putSettings({ serviceMode: next }).subscribe();
   }
@@ -123,15 +167,6 @@ export class App implements OnInit, OnDestroy {
 
   refreshAI() {
     this.coopService.runAIAnalysis("Manual refresh requested.");
-  }
-
-  takeSnapshot() {
-    if (this.isCapturing()) return;
-    this.isCapturing.set(true);
-    this.api.takeSnapshot().subscribe({
-      next: () => this.isCapturing.set(false),
-      error: () => this.isCapturing.set(false),
-    });
   }
 
   onCamError() {

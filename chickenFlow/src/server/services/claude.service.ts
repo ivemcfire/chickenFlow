@@ -4,6 +4,7 @@ import { aiAnalysisLog, cameraCaptures, sensorReadings, settings, weatherCache }
 import { eq, desc, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import type { AiAnalyzeResponse, ThreatType } from '../api/types.js';
+import { stripJsonFences } from './strip-json-fences.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env['GEMINI_API_KEY'] });
 
@@ -145,6 +146,109 @@ export async function fetchCamSnapshot(): Promise<Buffer> {
   return Buffer.from(await resp.arrayBuffer());
 }
 
+// ── Obstruction confidence check (safety gate) ───────────────────────────────
+// Called by the ESP32 *after* its local safety stop. Returns a confidence
+// that a chicken/animal is directly under the door. Firmware only escalates
+// to ERROR when confidence >= 0.8; otherwise it resumes the close cycle.
+
+const OBSTRUCTION_PROMPT = `You are the ChickenFlow obstruction safety gate.
+
+An ultrasonic sensor on the coop door just triggered while the door was closing. Your job: inspect the attached coop image and decide whether a chicken, animal, or object is *directly* under the door opening.
+
+Return ONLY valid JSON:
+{
+  "confidence": 0.0-1.0,
+  "reason": "short phrase"
+}
+
+Rules:
+- 0.8-1.0: clearly visible chicken/animal/object in the door threshold area.
+- 0.4-0.79: something is there but unclear (shadow, partial occlusion, motion blur).
+- 0.0-0.39: threshold appears clear; likely a false ultrasonic trigger.
+- If image is too dark or unusable: confidence 0.5, reason "image unusable".
+- Reason: max 10 words.`;
+
+export interface ObstructionAssessment {
+  abort: boolean;
+  confidence: number;
+  reason: string;
+}
+
+export async function assessObstruction(distanceCm: number, doorState: string): Promise<ObstructionAssessment> {
+  const startMs = Date.now();
+  let confidence = 0.5;
+  let reason = 'default';
+  let errorMessage: string | null = null;
+  let promptTokens = 0;
+  let completionTokens = 0;
+
+  try {
+    const imageBuffer = await fetchCamSnapshot();
+    const base64Image = imageBuffer.toString('base64');
+
+    const response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
+            { text: JSON.stringify({ distance_cm: distanceCm, door_state: doorState }) },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: OBSTRUCTION_PROMPT,
+        maxOutputTokens: 128,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const rawJson = response.text ?? '{}';
+    promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
+    completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+    const parsed = JSON.parse(stripJsonFences(rawJson)) as { confidence: number; reason: string };
+    confidence = Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5)));
+    reason = parsed.reason ?? 'no reason';
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err);
+    reason = 'ai unavailable — defaulting to safe retry';
+    confidence = 0.5;
+  }
+
+  const durationMs = Date.now() - startMs;
+  const abort = confidence >= 0.8;
+
+  await db.insert(aiAnalysisLog).values({
+    model: MODEL,
+    promptTokens,
+    completionTokens,
+    hasImage: true,
+    doorState,
+    chickensInside: 0,
+    totalChickens: 0,
+    obstructionDistance: distanceCm,
+    contextNote: `obstruction-check confidence=${confidence.toFixed(2)} abort=${abort}`,
+    analysisText: reason,
+    isWarning: abort,
+    anomalyDetected: abort,
+    threatType: abort ? 'obstruction' : null,
+    errorMessage,
+    durationMs,
+  });
+
+  if (abort) {
+    wsBroadcaster.broadcast('system:alert', {
+      severity: 'error',
+      text: `DOOR BLOCKED: ${reason} (${Math.round(confidence * 100)}%)`,
+      category: 'DOOR_OBSTRUCTED',
+      isPinned: true,
+    });
+  }
+
+  return { abort, confidence, reason };
+}
+
 // ── Vision analysis (image + telemetry) ──────────────────────────────────────
 
 export async function analyzeCapture(captureId: number, imageBuffer: Buffer): Promise<void> {
@@ -194,6 +298,7 @@ export async function analyzeCapture(captureId: number, imageBuffer: Buffer): Pr
       config: {
         systemInstruction: VISION_SYSTEM_PROMPT,
         maxOutputTokens: 256,
+        responseMimeType: 'application/json',
       },
     });
 
@@ -201,7 +306,7 @@ export async function analyzeCapture(captureId: number, imageBuffer: Buffer): Pr
     promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
     completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
 
-    const parsed = JSON.parse(rawJson) as {
+    const parsed = JSON.parse(stripJsonFences(rawJson)) as {
       anomaly: boolean;
       message: string;
       threat_type: string | null;

@@ -43,11 +43,19 @@ unsigned long motorPhaseStartMs = 0;   // when the current phase began
 unsigned long lastObstCheckMs   = 0;   // last ultrasonic check during close
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chicken counter (IR pulse counting)
+// Chicken counter — dual-IR tunnel state machine
+// Beam A = coop-side  |  Beam B = yard-side
+// A→B = OUT,  B→A = IN
 // ─────────────────────────────────────────────────────────────────────────────
-volatile int  chickensInside  = 0;
-volatile bool irLastState     = HIGH;
-unsigned long irLastTriggerMs = 0;
+enum TunnelPhase { TUNNEL_IDLE, TUNNEL_A_FIRST, TUNNEL_B_FIRST };
+
+volatile int  chickensInside   = 0;
+TunnelPhase   tunnelPhase      = TUNNEL_IDLE;
+unsigned long tunnelPhaseMs    = 0;   // when current phase began
+bool          irAPrev          = HIGH;
+bool          irBPrev          = HIGH;
+unsigned long irALastEdgeMs    = 0;
+unsigned long irBLastEdgeMs    = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Timers
@@ -60,6 +68,8 @@ unsigned long lastCapturePostMs = 0;
 // Prototypes
 // ─────────────────────────────────────────────────────────────────────────────
 float    measureDistanceCm();
+void     tickTunnelCounter();
+bool     queryObstructionAbort(float distanceCm);
 void     motorOpen();
 void     motorClose();
 void     motorStop();
@@ -95,8 +105,9 @@ void setup() {
   pinMode(PIN_ULTRASONIC_TRIG, OUTPUT); digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
   pinMode(PIN_ULTRASONIC_ECHO, INPUT);
 
-  // IR sensor: LOW = chicken crossing beam.
-  pinMode(PIN_IR_SENSOR, INPUT);
+  // Dual IR tunnel beams: LOW = beam broken.
+  pinMode(PIN_IR_SENSOR_A, INPUT);
+  pinMode(PIN_IR_SENSOR_B, INPUT);
 
   // Top limit switch: external 10kΩ pull-up to 3.3V (Normally Open config).
   // HIGH = door traveling, LOW = door fully open (limit triggered).
@@ -162,23 +173,8 @@ void loop() {
     return;
   }
 
-  // IR sensor chicken counting (debounced).
-  // GPIO 2 idles HIGH via external pull-down + sensor output; LOW = beam break.
-  // INPUT_PULLUP must never be used here — GPIO 2 is a strapping pin.
-  bool irNow = digitalRead(PIN_IR_SENSOR);
-  if (irNow == LOW && irLastState == HIGH &&
-      (now - irLastTriggerMs > IR_DEBOUNCE_MS)) {
-    // Beam broken — direction depends on door state:
-    // door open = chicken going out; otherwise = coming in
-    if (doorState == DOOR_OPEN) {
-      chickensInside = max(0, chickensInside - 1);
-    } else {
-      chickensInside++;
-    }
-    irLastTriggerMs = now;
-    DBGF("[IR] Trigger — chickens inside: %d\n", chickensInside);
-  }
-  irLastState = irNow;
+  // Dual-IR tunnel counter — direction from event order.
+  tickTunnelCounter();
 
   // Tick the non-blocking door motor state machine
   tickDoorMotor();
@@ -300,22 +296,37 @@ void tickDoorMotor() {
           lastObstCheckMs = now;
           float dist = measureDistanceCm();
           if (dist > 0 && dist < OBSTRUCTION_CM) {
+            // Local hard stop — always immediate, never waits on the network.
             motorStop();
-            DBGF("[Door] Obstruction at %.1f cm\n", dist);
+            DBGF("[Door] Ultrasonic stop at %.1f cm — asking AI gate\n", dist);
             playObstruction();
-            obstructionRetries++;
 
+            // AI confidence gate: only escalate to ERROR if backend is
+            // ≥80% sure something is under the door. Otherwise treat as
+            // a false positive and resume the normal retry cycle.
+            bool aiAbort = queryObstructionAbort(dist);
+            if (aiAbort) {
+              doorState  = DOOR_ERROR;
+              reportDoorEvent(motorPrevStr.c_str(), "ERROR");
+              motorPhase = MOTOR_IDLE;
+              playError();
+              blinkLed(6, 200);
+              DBGLN("[Door] ERROR — AI confirmed obstruction");
+              return;
+            }
+
+            obstructionRetries++;
             if (obstructionRetries >= DOOR_RETRY_MAX) {
               doorState  = DOOR_ERROR;
               reportDoorEvent(motorPrevStr.c_str(), "ERROR");
               motorPhase = MOTOR_IDLE;
               playError();
               blinkLed(6, 200);
-              DBGLN("[Door] ERROR — max obstruction retries exceeded");
+              DBGLN("[Door] ERROR — max retries exceeded");
               return;
             }
 
-            // Re-open briefly (3 s) to clear obstruction, then pause
+            // Re-open briefly (3 s) to clear, then pause
             motorOpen();
             motorPhaseStartMs = now;
             motorPhase = MOTOR_REOPEN;
@@ -371,6 +382,97 @@ void motorStop() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dual-IR tunnel direction counter
+// ─────────────────────────────────────────────────────────────────────────────
+void tickTunnelCounter() {
+  unsigned long now = millis();
+  bool aNow = digitalRead(PIN_IR_SENSOR_A);
+  bool bNow = digitalRead(PIN_IR_SENSOR_B);
+
+  bool aBroken = (aNow == LOW && irAPrev == HIGH && (now - irALastEdgeMs > IR_DEBOUNCE_MS));
+  bool bBroken = (bNow == LOW && irBPrev == HIGH && (now - irBLastEdgeMs > IR_DEBOUNCE_MS));
+
+  if (aBroken) irALastEdgeMs = now;
+  if (bBroken) irBLastEdgeMs = now;
+  irAPrev = aNow;
+  irBPrev = bNow;
+
+  // Timeout: discard a half-completed crossing
+  if (tunnelPhase != TUNNEL_IDLE && (now - tunnelPhaseMs > IR_TUNNEL_TIMEOUT_MS)) {
+    DBGLN("[Tunnel] Timeout — partial crossing discarded");
+    tunnelPhase = TUNNEL_IDLE;
+  }
+
+  switch (tunnelPhase) {
+    case TUNNEL_IDLE:
+      if (aBroken) {
+        tunnelPhase = TUNNEL_A_FIRST;
+        tunnelPhaseMs = now;
+      } else if (bBroken) {
+        tunnelPhase = TUNNEL_B_FIRST;
+        tunnelPhaseMs = now;
+      }
+      break;
+
+    case TUNNEL_A_FIRST:
+      if (bBroken) {
+        // A→B = OUT (coop → yard)
+        chickensInside = max(0, chickensInside - 1);
+        DBGF("[Tunnel] A→B  OUT  inside=%d\n", chickensInside);
+        tunnelPhase = TUNNEL_IDLE;
+      }
+      break;
+
+    case TUNNEL_B_FIRST:
+      if (aBroken) {
+        // B→A = IN (yard → coop)
+        chickensInside++;
+        DBGF("[Tunnel] B→A  IN  inside=%d\n", chickensInside);
+        tunnelPhase = TUNNEL_IDLE;
+      }
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Obstruction AI gate — POST /api/esp32/obstruction-check
+// Returns true if backend is ≥80% confident something is under the door.
+// On network failure, returns false (safe retry) — local stop already happened.
+// ─────────────────────────────────────────────────────────────────────────────
+bool queryObstructionAbort(float distanceCm) {
+  HTTPClient http;
+  http.begin(API_OBSTRUCTION_CHECK);
+  http.setTimeout(OBSTRUCTION_CHECK_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+
+  JsonDocument req;
+  req["distanceCm"] = distanceCm;
+  req["doorState"]  = doorStateStr(doorState);
+  String body;
+  serializeJson(req, body);
+
+  int code = http.POST(body);
+  if (code != 200) {
+    DBGF("[ObstructionCheck] HTTP %d — defaulting to retry\n", code);
+    http.end();
+    return false;
+  }
+
+  JsonDocument resp;
+  DeserializationError err = deserializeJson(resp, http.getString());
+  http.end();
+  if (err) {
+    DBGF("[ObstructionCheck] JSON err: %s — defaulting to retry\n", err.c_str());
+    return false;
+  }
+
+  bool  abort      = resp["abort"]      | false;
+  float confidence = resp["confidence"] | 0.0f;
+  DBGF("[ObstructionCheck] abort=%d confidence=%.2f\n", abort, confidence);
+  return abort;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Ultrasonic distance measurement (median of N samples)
 // ─────────────────────────────────────────────────────────────────────────────
 float measureDistanceCm() {
@@ -404,11 +506,14 @@ float measureDistanceCm() {
 // ─────────────────────────────────────────────────────────────────────────────
 void postSensorReading() {
   float dist = measureDistanceCm();
-  bool  ir   = (digitalRead(PIN_IR_SENSOR) == LOW);
+  bool  irA  = (digitalRead(PIN_IR_SENSOR_A) == LOW);
+  bool  irB  = (digitalRead(PIN_IR_SENSOR_B) == LOW);
 
   JsonDocument doc;
   doc["distanceCm"]     = dist;
-  doc["irTriggered"]    = ir;
+  doc["irTriggered"]    = irA || irB;  // legacy field: either beam counts
+  doc["irATriggered"]   = irA;
+  doc["irBTriggered"]   = irB;
   doc["chickensInside"] = chickensInside;
   doc["totalChickens"]  = 0;  // Backend fills from settings
   doc["doorState"]      = doorStateStr(doorState);

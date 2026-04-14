@@ -3,7 +3,9 @@ import { db } from '../db/index.js';
 import { sensorReadings, settings, doorEvents } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import type { SensorReadingRequest } from './types.js';
+import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
+import { assessObstruction } from '../services/claude.service.js';
+import type { SensorReadingRequest, ObstructionCheckRequest, ObstructionCheckResponse } from './types.js';
 
 export const sensorRouter = Router();
 
@@ -24,6 +26,8 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       distanceCm: body.distanceCm ?? null,
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
+      irATriggered: body.irATriggered ?? false,
+      irBTriggered: body.irBTriggered ?? false,
       chickensInside: body.chickensInside,
       totalChickens,
       doorState: body.doorState,
@@ -33,10 +37,13 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       distanceCm: body.distanceCm ?? null,
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
+      irATriggered: body.irATriggered ?? false,
+      irBTriggered: body.irBTriggered ?? false,
       chickensInside: body.chickensInside,
       doorState: body.doorState,
     });
 
+    markEsp32Online();
     res.status(201).json({ ok: true });
   } catch (err) {
     next(err);
@@ -73,6 +80,25 @@ sensorRouter.post('/door-event', async (req, res, next) => {
     });
 
     res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Obstruction-check (AI safety gate) ───────────────────────────────────────
+// ESP32 calls this immediately after its local ultrasonic stop. Returns
+// { abort: true } only when Gemini is ≥80% confident something is under the
+// door; otherwise the firmware resumes the close cycle.
+sensorRouter.post('/obstruction-check', async (req, res, next) => {
+  try {
+    const body = req.body as ObstructionCheckRequest;
+    const result = await assessObstruction(body.distanceCm, body.doorState);
+    const response: ObstructionCheckResponse = {
+      abort: result.abort,
+      confidence: result.confidence,
+      reason: result.reason,
+    };
+    res.json(response);
   } catch (err) {
     next(err);
   }

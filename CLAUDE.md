@@ -19,10 +19,10 @@ Three roles, three tools — each has a defined lane:
 ## Project Overview
 
 **ChickenFlow** is an Angular 21 web application for an AI-powered automated chicken coop door. It integrates:
-- **Google Gemini** (AI Studio frontend, client-side) — UI/UX design and logic simulation
-- **Claude claude-sonnet-4-6** (backend, server-side) — production AI analysis with full audit trail
+- **Google Gemini** (`gemini-2.5-flash-lite` via `@google/genai`) — both frontend UX simulation and backend telemetry + vision analysis with full audit trail
 - **Open-Meteo** — weather and solar data
-- **ESP32-CAM** — edge device (image capture, ultrasonic sensor, IR, door motor control)
+- **ESP32-S2 Mini** — edge device (limit switch + IR, door motor control, HTTP polling). Legacy ESP32-CAM hardware has been replaced.
+- **Frigate + cam01 (NETSurveillance)** — video feed and snapshot source, proxied via `/api/camera/snapshot`
 - **k3s homelab cluster** — production deployment target
 
 ---
@@ -58,7 +58,10 @@ make logs               # Follow pod logs
 make rollback           # Roll back to previous image
 ```
 
-**Environment variable for local dev**: Copy `chickenFlow/.env.example` to `chickenFlow/.env` and set `ANTHROPIC_API_KEY`.
+**Environment variables for local dev**: Copy `chickenFlow/.env.example` to `chickenFlow/.env` and set:
+- `GEMINI_API_KEY` — Google Gemini API key (used by both frontend and backend)
+- `DATABASE_URL` — Postgres connection string (e.g. `postgres://user:pass@host:5432/chickenflow`)
+- `FRIGATE_URL` + `FRIGATE_COOP_CAM` — Frigate base URL and camera name for the snapshot proxy
 
 ---
 
@@ -79,7 +82,7 @@ chicken-flow-app/
 │   │       ├── db/              ← Drizzle schema + migrations
 │   │       ├── jobs/            ← node-cron background jobs
 │   │       ├── middleware/      ← Express middleware
-│   │       ├── services/        ← Claude AI + weather services
+│   │       ├── services/        ← Gemini AI + weather services
 │   │       └── ws/              ← WebSocket server + broadcaster
 │   ├── deploy/                  ← k3s manifests (Opus's territory)
 │   └── Dockerfile               ← Multi-stage build, runs migrations on start
@@ -91,9 +94,10 @@ chicken-flow-app/
 
 - `src/app/coop-state.service.ts` — All frontend state + automation logic (~750 lines, Angular Signals)
 - `src/server.ts` — Express entry point: mounts `/api`, WebSocket, scheduler
-- `src/server/db/schema.ts` — 7 Drizzle tables (settings, door_events, sensor_readings, status_messages, weather_cache, ai_analysis_log, camera_captures)
-- `src/server/services/claude.service.ts` — Telemetry + multimodal vision analysis
-- `src/server/api/sensor.routes.ts` — ESP32-CAM ingest (multer + sharp)
+- `src/server/db/schema.ts` — 7 Drizzle **Postgres** tables (settings, door_events, sensor_readings, status_messages, weather_cache, ai_analysis_log, camera_captures)
+- `src/server/services/claude.service.ts` — Gemini telemetry + multimodal vision analysis (filename is historical; now calls Gemini, not Claude)
+- `src/server/api/sensor.routes.ts` — ESP32-S2 Mini sensor/door-event/command ingest
+- `src/server/api/camera.routes.ts` — Frigate snapshot proxy (`/api/camera/snapshot`)
 - `system-logic.md` — Domain logic documentation (read before editing automation)
 
 ### State Management
@@ -108,25 +112,24 @@ chicken-flow-app/
 | `serviceMode` | Disables all automation |
 | `statusMessages[]` | System event log |
 
-**Backend** (SQLite via Drizzle):
+**Backend** (Postgres via Drizzle `pg-core`):
 
 | Table | Purpose | Retention |
 |-------|---------|-----------|
 | `settings` | Single-row config + ESP32 `pendingCommand` | Permanent |
 | `door_events` | Immutable state transition log | Permanent |
-| `sensor_readings` | ESP32 ultrasonic + IR time-series | 7 days |
+| `sensor_readings` | ESP32-S2 limit-switch + IR time-series | 7 days |
 | `status_messages` | Replaces localStorage | 30 days (non-pinned) |
 | `weather_cache` | Open-Meteo forecast cache | Rolling |
-| `ai_analysis_log` | Every Claude call audit trail | Permanent |
-| `camera_captures` | ESP32-CAM image metadata | 48h / 30d (anomaly) |
+| `ai_analysis_log` | Every Gemini call audit trail | Permanent |
+| `camera_captures` | Frigate snapshot metadata | 48h / 30d (anomaly) |
 
-### ESP32-CAM Integration
+### ESP32-S2 Mini Integration
 
-The ESP32-CAM communicates with the backend via plain HTTP (no TLS, no WebSocket — too heavy for the microcontroller):
+The ESP32-S2 Mini communicates with the backend via plain HTTP (no TLS, no WebSocket — too heavy for the microcontroller). Image capture now comes from Frigate/cam01, not the microcontroller.
 
 ```
-POST /api/esp32/sensor     ← sensor readings (JSON)
-POST /api/esp32/capture    ← image upload (multipart/form-data, max 4MB)
+POST /api/esp32/sensor     ← sensor readings (JSON; limit switch + IR)
 POST /api/esp32/door-event ← state changes
 GET  /api/esp32/command    ← poll for door commands (reads + resets pendingCommand atomically)
 ```
@@ -136,14 +139,14 @@ GET  /api/esp32/command    ← poll for door commands (reads + resets pendingCom
 | Job | Schedule | Purpose |
 |-----|----------|---------|
 | `weather-poll` | `*/15 * * * *` | Fetch Open-Meteo, update cache, queue CLOSE if severe |
-| `ai-analysis` | `3 * * * *` | Hourly Claude telemetry analysis |
+| `ai-analysis` | `3 * * * *` | Hourly Gemini telemetry analysis |
 | `message-cleanup` | `0 3 * * *` | Prune old messages, sensor rows, and image files |
 
 ### AI Integration (Backend)
 
-`claude.service.ts` has two modes:
+`claude.service.ts` (historical name) calls **Google Gemini** via `@google/genai` (`gemini-2.5-flash-lite`). It has two modes:
 1. **Telemetry-only** — structured JSON prompt → 15-25 word status text
-2. **Vision** — base64 image + telemetry JSON → `{"anomaly": bool, "count_confirmed": bool, "message": "...", "threat_type": null | "predator" | "obstruction" | "injury"}`
+2. **Vision** — base64 image (fetched from Frigate) + telemetry JSON → `{"anomaly": bool, "message": "...", "threat_type": null | "predator" | "obstruction" | "injury"}`
 
 Predator detection auto-queues a `CLOSE` command to `settings.pendingCommand` and pins a `VISION_THREAT` alert.
 
@@ -160,11 +163,11 @@ Predator detection auto-queues a `CLOSE` command to `settings.pendingCommand` an
 - **Angular 21** with Signals (strict mode, OnPush)
 - **Angular Material** + **Tailwind CSS v4**
 - **Express v5** + **Angular SSR**
-- **Drizzle ORM** + **better-sqlite3** (WAL mode)
+- **Drizzle ORM** + **Postgres** (`pg` driver, `pg-core` schema)
 - **ws** WebSocket (native, no Socket.io)
 - **node-cron** background jobs
-- **multer** + **sharp** for ESP32-CAM image ingest
-- **Anthropic SDK** (`claude-sonnet-4-6`)
+- **multer** + **sharp** for image ingest (legacy upload path; live view now proxies Frigate)
+- **`@google/genai`** SDK (`gemini-2.5-flash-lite`)
 - **TypeScript 5.9** — strict mode, ES2022
 - **Vitest** + jsdom for testing
 - **Docker** (multi-stage) + **k3s** (homelab)

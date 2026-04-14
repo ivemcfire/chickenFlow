@@ -23,6 +23,7 @@ export interface ApiWeatherDay {
   sunrise: string;
   sunset: string;
   isSevere: boolean;
+  fetchedAt: string;
 }
 
 export interface ApiDoorState {
@@ -62,7 +63,7 @@ export interface ApiAiResponse {
 
 export interface WsEnvelope {
   event: string;
-  payload: any;
+  payload: unknown;
   ts: number;
 }
 

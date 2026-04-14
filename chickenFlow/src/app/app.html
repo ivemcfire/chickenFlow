@@ -17,18 +17,31 @@
         </div>
         <div class="flex flex-col items-end gap-1">
           <div class="flex items-center gap-3">
-            <div class="flex items-center gap-2 bg-amber-500/10 text-amber-400 px-4 py-1 rounded-full border border-amber-500/20 text-xs font-bold">
-              <span class="relative flex h-2 w-2">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-              </span>
-              SYSTEM ONLINE
-            </div>
+            @if (systemOnline()) {
+              <div class="flex items-center gap-2 bg-amber-500/10 text-amber-400 px-4 py-1 rounded-full border border-amber-500/20 text-xs font-bold">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                SYSTEM ONLINE
+              </div>
+            } @else {
+              <div class="flex items-center gap-2 bg-red-500/10 text-red-400 px-4 py-1 rounded-full border border-red-500/30 text-xs font-bold">
+                <span class="relative flex h-2 w-2">
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+                SYSTEM OFFLINE
+              </div>
+            }
             <button class="w-8 h-8 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-400 hover:text-amber-500 hover:border-amber-500/50 transition-all" title="User Account (Coming Soon)">
               <mat-icon class="text-lg">account_circle</mat-icon>
             </button>
           </div>
-          <span class="text-[10px] text-stone-300 uppercase tracking-tight font-bold">RUNNING NORMAL SINCE {{ startTime() }}</span>
+          <span class="text-[10px] uppercase tracking-tight font-bold"
+                [class.text-stone-300]="backendOnline() && systemOnline()"
+                [class.text-red-400]="!backendOnline() || !systemOnline()">
+            {{ headerStatusLine() }}
+          </span>
         </div>
       </header>
 
@@ -110,11 +123,7 @@
                  doorState() === DoorState.CLOSING ? 'text-yellow-500 animate-pulse' :
                  doorState() === DoorState.OPENING ? 'text-amber-500 animate-pulse' :
                  doorState() === DoorState.ERROR ? 'text-red-500 animate-pulse' : 'text-yellow-400')">
-                {{ doorState() === DoorState.OPEN ? 'Day Mode: Open' : 
-                   doorState() === DoorState.CLOSED ? 'Night Mode: Secure' : 
-                   doorState() === DoorState.CLOSING ? 'System: Closing...' :
-                   doorState() === DoorState.OPENING ? 'System: Re-Opening...' :
-                   doorState() === DoorState.ERROR ? 'ALARM: Obstruction' : 'Transitioning...' }}
+                {{ doorStatusLabel() }}
               </span>
             </div>
           </div>
@@ -228,33 +237,25 @@
 
     <!-- Right Column: Controls -->
     <div class="space-y-6">
-      <!-- Live Camera Feed — cam01 -->
+      <!-- Live Camera Feed -->
       <div class="glass-card overflow-hidden">
 
-        <!-- Snapshot viewport — polled every 2 s from Frigate latest.jpg -->
         <div class="bg-stone-950 h-48 relative overflow-hidden">
 
           <img [src]="camSnapshotUrl()"
-               alt="cam01 live"
+               alt="live"
                (error)="onCamError()"
                (load)="onCamLoad()"
                [class.hidden]="camError()"
                class="absolute inset-0 w-full h-full object-cover">
 
-          <!-- Offline placeholder -->
           @if (camError()) {
             <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
               <mat-icon class="text-stone-600 text-4xl">videocam_off</mat-icon>
-              <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">cam01 offline</span>
+              <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">offline</span>
             </div>
           }
 
-          <!-- Anomaly ring from last AI snapshot -->
-          @if (latestCapture()?.isAnomaly) {
-            <div class="absolute inset-0 ring-2 ring-red-500 pointer-events-none z-10 animate-pulse"></div>
-          }
-
-          <!-- Status badge -->
           <div class="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border border-white/5 bg-stone-900/80"
                [class.text-emerald-400]="!camError()"
                [class.text-stone-500]="camError()">
@@ -262,49 +263,23 @@
                   [class.bg-emerald-400]="!camError()"
                   [class.animate-pulse]="!camError()"
                   [class.bg-stone-600]="camError()"></span>
-            {{ camError() ? 'OFFLINE' : 'LIVE · cam01' }}
+            {{ camError() ? 'OFFLINE' : 'LIVE' }}
           </div>
-
-          <!-- Last AI snapshot threat banner -->
-          @if (latestCapture()?.threatType) {
-            <div class="absolute bottom-0 left-0 right-0 bg-red-900/90 text-red-200 text-[10px] font-bold uppercase tracking-widest px-2 py-1 text-center z-20">
-              THREAT: {{ latestCapture()!.threatType }}
-            </div>
-          }
-        </div>
-
-        <!-- AI Snapshot button + last result -->
-        <div class="px-3 py-2 flex items-center justify-between gap-2 border-t border-stone-800/50">
-          <div class="flex-1 min-w-0">
-            @if (latestCapture()) {
-              <p class="text-[9px] text-stone-500 truncate">
-                Last snapshot · {{ latestCapture()!.doorStateAtCapture }}
-                @if (latestCapture()!.isAnomaly) {
-                  <span class="text-red-400 font-bold"> · ANOMALY</span>
-                }
-              </p>
-            } @else {
-              <p class="text-[9px] text-stone-600">No AI snapshot yet</p>
-            }
-          </div>
-          <button (click)="takeSnapshot()"
-                  [disabled]="isCapturing() || serviceMode()"
-                  class="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <mat-icon [class.animate-spin]="isCapturing()" class="text-sm">
-              {{ isCapturing() ? 'refresh' : 'photo_camera' }}
-            </mat-icon>
-            {{ isCapturing() ? 'Analyzing…' : 'AI Snapshot' }}
-          </button>
         </div>
 
       </div>
 
       <!-- 5-Day Weather Forecast -->
       <div class="glass-card p-6">
-        <h3 class="text-xs font-bold mb-6 text-stone-400 uppercase tracking-widest flex items-center gap-2">
+        <h3 class="text-xs font-bold mb-1 text-stone-400 uppercase tracking-widest flex items-center gap-2">
           <mat-icon class="text-sm">wb_sunny</mat-icon>
           5-DAY WEATHER FORECAST
         </h3>
+        @if (weatherSubtitle()) {
+          <p class="text-[9px] text-stone-500 mb-5 ml-6 normal-case tracking-normal">{{ weatherSubtitle() }}</p>
+        } @else {
+          <div class="mb-5"></div>
+        }
         <div class="grid grid-cols-5 gap-2">
           @for (day of weatherForecast(); track day.day) {
             <div class="flex flex-col items-center p-2 rounded-xl bg-stone-900/50 border border-stone-800/50">

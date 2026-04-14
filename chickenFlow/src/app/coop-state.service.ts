@@ -51,11 +51,14 @@ export class CoopStateService {
   totalChickens = signal<number>(10);
   currentTime = signal<string>('');
   weatherForecast = signal<WeatherDay[]>([]);
+  weatherLocation = signal<string>('');
+  weatherUpdatedAt = signal<string>('');
   sunrise = signal<string>('06:00');
   sunset = signal<string>('18:00');
   distance = signal<number>(45);
   irTriggered = signal<boolean>(false);
-  systemOnline = signal<boolean>(true);
+  systemOnline = signal<boolean>(false);
+  backendOnline = signal<boolean>(true);
   statusMessages = signal<StatusMessage[]>([]);
   isAnalyzing = signal<boolean>(false);
   herdingMode = signal<boolean>(false);
@@ -91,7 +94,6 @@ export class CoopStateService {
     this.api.connectWebSocket();
     this.subscribeToWsEvents();
 
-    this.addStatusMessage('System initialized. Connecting to backend...', false, false);
   }
 
   // ── Backend integration ───────────────────────────────────────────────────
@@ -104,7 +106,20 @@ export class CoopStateService {
         this.serviceMode.set(s.serviceMode);
         this.musicDuration.set(s.musicDuration);
         this.smartNightLight.set(s.smartNightLight);
+        this.weatherLocation.set('Antonovo, BG');
         this.initChickens();
+      },
+    });
+
+    // Seed ESP32 online state from latest sensor reading age (15 min threshold)
+    this.api.getLatestSensor().subscribe({
+      next: (row) => {
+        if (!row?.createdAt) {
+          this.systemOnline.set(false);
+          return;
+        }
+        const ageMs = Date.now() - new Date(row.createdAt).getTime();
+        this.systemOnline.set(ageMs < 15 * 60 * 1000);
       },
       error: () => this.systemOnline.set(false),
     });
@@ -141,17 +156,13 @@ export class CoopStateService {
       next: (c) => { if (c) this.latestCapture.set(c); },
     });
 
-    // Health check
+    // Health check — backend reachability only; ESP32 status is separate.
     this.api.getHealth().subscribe({
       next: (h) => {
-        this.systemOnline.set(h.status === 'ok');
-        if (h.status === 'ok') {
-          this.addStatusMessage('Backend connected. System online.');
-        }
+        this.backendOnline.set(h.status === 'ok');
       },
       error: () => {
-        this.systemOnline.set(false);
-        this.addStatusMessage('Backend unreachable. Running in offline mode.', true, true);
+        this.backendOnline.set(false);
       },
     });
   }
@@ -177,6 +188,17 @@ export class CoopStateService {
           const p = msg.payload as { distanceCm: number; irTriggered: boolean; chickensInside: number; doorState: string };
           this.distance.set(p.distanceCm);
           this.irTriggered.set(p.irTriggered);
+          this.systemOnline.set(true);
+          break;
+        }
+        case 'esp32:status': {
+          const p = msg.payload as { online: boolean };
+          this.systemOnline.set(p.online);
+          if (!p.online) {
+            this.notifyEsp32Offline();
+          } else {
+            this.unpinCategory('ESP32_OFFLINE');
+          }
           break;
         }
         case 'weather:updated':
@@ -187,7 +209,7 @@ export class CoopStateService {
           this.isAnalyzing.set(false);
           this.addStatusMessage(p.analysisText, p.isWarning, p.isWarning);
           if (p.anomalyDetected && p.threatType === 'predator') {
-            this.addStatusMessage(`THREAT DETECTED: ${p.threatType}`, false, true, 'VISION_THREAT', true);
+            this.addStatusMessage(`Something suspicious near the coop: ${p.threatType}`, false, true, 'VISION_THREAT', true);
           }
           break;
         }
@@ -221,6 +243,19 @@ export class CoopStateService {
     };
 
     this.statusMessages.update(prev => [newMessage, ...prev]);
+  }
+
+  private notifyEsp32Offline() {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const show = () => new Notification('ChickenFlow: ESP32 offline', {
+      body: 'No heartbeat from the controller for 15+ minutes.',
+      tag: 'esp32-offline',
+    });
+    if (Notification.permission === 'granted') {
+      show();
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission().then((p) => { if (p === 'granted') show(); });
+    }
   }
 
   unpinCategory(category: string) {
@@ -303,6 +338,7 @@ export class CoopStateService {
           };
         });
         this.weatherForecast.set(forecast);
+        if (days[0]?.fetchedAt) this.weatherUpdatedAt.set(days[0].fetchedAt);
 
         // Extract sunrise/sunset from today's data
         const today = days[0];
@@ -320,7 +356,7 @@ export class CoopStateService {
         // Check for severe weather lock
         if (today?.isSevere && !this.serviceMode()) {
           this.weatherLock.set(true);
-          this.addStatusMessage('Severe weather detected. AI has engaged Weather Lockdown.', true, true, 'WEATHER_LOCK');
+          this.addStatusMessage('Bad weather coming — door will stay closed to keep the chickens safe.', true, true, 'WEATHER_LOCK');
         }
       },
       error: () => {
@@ -367,17 +403,14 @@ export class CoopStateService {
         if (this.weatherLock()) {
           this.weatherLock.set(false);
           this.unpinCategory('WEATHER_LOCK');
-          this.addStatusMessage('Weather lockdown overridden by user.', false, false);
+          this.addStatusMessage('Weather lockdown cleared.', false, false);
         }
       }
 
       this.api.sendDoorCommand(command, trigger, insideCount).subscribe({
-        next: () => {
-          this.addStatusMessage(`Door command queued: ${command}`);
-        },
         error: () => {
           this.doorState.set(DoorState.ERROR);
-          this.addStatusMessage('Failed to send door command to backend.', false, true, undefined, true);
+          this.addStatusMessage("Couldn't reach the server to control the door.", false, true, undefined, true);
         },
       });
       return;
@@ -386,7 +419,7 @@ export class CoopStateService {
     // ERROR state — just update locally
     if (state === DoorState.ERROR) {
       this.doorState.set(state);
-      this.addStatusMessage('System Error: Door obstruction detected!', false, true, 'SYSTEM_ERROR', true);
+      this.addStatusMessage('Something is blocking the door!', false, true, 'SYSTEM_ERROR', true);
     }
   }
 
@@ -525,7 +558,7 @@ export class CoopStateService {
       targetY: Math.random() * 140 + 50,
     })));
     this.setDoorState(DoorState.CLOSED, false);
-    this.addStatusMessage('Manual chicken return triggered. All chickens secured.', false, false);
+    this.addStatusMessage('All chickens brought back inside.', false, false);
 
     setTimeout(() => this.isReturning.set(false), 3000);
   }
@@ -558,7 +591,7 @@ export class CoopStateService {
       error: () => {
         // WS won't fire on HTTP error, so add message here only
         this.isAnalyzing.set(false);
-        this.addStatusMessage('AI module offline. Manual monitoring advised.', true, true);
+        this.addStatusMessage('AI assistant is offline.', true, true);
       },
     });
   }

@@ -42,6 +42,8 @@ export const sensorReadings = pgTable('sensor_readings', {
   distanceCm: doublePrecision('distance_cm'),
   topSensorTriggered: boolean('top_sensor_triggered').notNull().default(false),
   irTriggered: boolean('ir_triggered').notNull().default(false),
+  irATriggered: boolean('ir_a_triggered').notNull().default(false),
+  irBTriggered: boolean('ir_b_triggered').notNull().default(false),
   chickensInside: integer('chickens_inside').notNull(),
   totalChickens: integer('total_chickens').notNull(),
   doorState: text('door_state').notNull(),
