@@ -26,7 +26,6 @@ export async function aiAnalysisJob(): Promise<void> {
       tempMax: todayWeather?.tempMax,
       weatherLock: todayWeather?.isSevere ?? false,
       serviceMode: cfg?.serviceMode ?? false,
-      obstructionDistance: latestSensor?.distanceCm ?? undefined,
       sunriseLocal: todayWeather?.sunrise,
       sunsetLocal: todayWeather?.sunset,
       contextNote: 'Scheduled hourly analysis',

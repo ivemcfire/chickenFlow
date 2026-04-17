@@ -116,6 +116,24 @@
 #define OBSTRUCTION_WAIT_MS    30000     // Wait before retry
 #define OBSTRUCTION_BUZZ_MS     3000     // Clear-the-tunnel buzzer duration
 
+// ── HTTP API fallback (used until MQTT migration is complete) ─────────────
+// Server base URL — MetalLB or NodePort
+#define SERVER_BASE        "http://192.168.100.211"
+#define API_SENSOR         SERVER_BASE "/api/esp32/sensor"
+#define API_COMMAND        SERVER_BASE "/api/esp32/command"
+#define API_DOOR_EVENT     SERVER_BASE "/api/esp32/door-event"
+#define API_OBSTRUCTION_CHECK  SERVER_BASE "/api/esp32/obstruction-check"
+
+#define COMMAND_POLL_MS           5000
+#define SENSOR_POST_MS           10000
+#define HTTP_TIMEOUT_MS           5000
+#define OBSTRUCTION_CHECK_TIMEOUT_MS 10000
+
+// ── Status LED timing ───────────────────────────────────────────────────
+#define LED_BLINK_CONNECTING_MS    80   // Rapid blink half-period during WiFi connect
+#define LED_CONNECTED_PAUSE_MS   3000   // Solid ON pause after WiFi connects
+#define LED_TRANSFER_FLICKER_MS    30   // Brief OFF duration per packet (HDD style)
+
 // ── Logging ──────────────────────────────────────────────────────────────────
 #define ENABLE_SERIAL  1   // Safe on ESP32-S2 via native USB CDC
 

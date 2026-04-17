@@ -120,7 +120,6 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
   const doorState = lastDoor?.toState ?? 'CLOSED';
 
   await db.insert(sensorReadings).values({
-    distanceCm: null,
     topSensorTriggered: false,
     irTriggered: false,
     irATriggered: false,
@@ -131,7 +130,6 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
   });
 
   wsBroadcaster.broadcast('sensor:reading', {
-    distanceCm: null,
     topSensorTriggered: false,
     irTriggered: false,
     irATriggered: false,
@@ -179,7 +177,6 @@ async function handleCount(p: Record<string, unknown>): Promise<void> {
     irTriggered: true,
     irATriggered: isEntry,
     irBTriggered: !isEntry,
-    distanceCm: null,
     topSensorTriggered: false,
     doorState: undefined,
     count: { dir, totalIn: row?.totalIn, totalOut: row?.totalOut },

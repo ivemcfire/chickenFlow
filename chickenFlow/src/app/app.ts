@@ -72,7 +72,6 @@ export class App implements OnInit, OnDestroy {
   solarTimerLabel = this.coopService.solarTimerLabel;
   weatherLock = this.coopService.weatherLock;
   startTime = this.coopService.startTime;
-  distance = this.coopService.distance;
   systemOnline = this.coopService.systemOnline;
   backendOnline = this.coopService.backendOnline;
   headerStatusLine = computed(() => {

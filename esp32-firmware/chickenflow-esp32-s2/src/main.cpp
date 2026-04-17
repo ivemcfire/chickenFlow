@@ -10,10 +10,10 @@
  *
  * Wiring summary (see config.h for full GPIO map):
  *   Motor IN1    → GPIO  5   Motor IN2     → GPIO  7
- *   Ultrasonic TRIG → GPIO  4   ECHO      → GPIO  8
- *   IR sensor    → GPIO  9   Top limit     → GPIO 12
+ *   IR-A (yard)  → GPIO  9   IR-B (coop)  → GPIO 10
+ *   Top limit    → GPIO 12   Bottom limit → GPIO  8
  *   Buzzer       → GPIO 14   Status LED   → GPIO 15
- *   Coop light   → GPIO 16
+ *   Coop light   → GPIO 16   INA219 (I2C) → SDA 33 / SCL 35
  */
 
 #include <WiFi.h>
@@ -40,7 +40,6 @@ MotorPhase    motorPhase        = MOTOR_IDLE;
 bool          motorIsOpening    = false;
 String        motorPrevStr;            // door state string before movement started
 unsigned long motorPhaseStartMs = 0;   // when the current phase began
-unsigned long lastObstCheckMs   = 0;   // last ultrasonic check during close
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Chicken counter — dual-IR tunnel state machine
@@ -65,11 +64,24 @@ unsigned long lastSensorPostMs  = 0;
 unsigned long lastCapturePostMs = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Status LED — 3-phase indicator on built-in LED (GPIO 15)
+//   CONNECTING:      rapid blink while WiFi is associating
+//   CONNECTED_PAUSE: solid ON for 3 s after WiFi connects (visual confirmation)
+//   IDLE:            constant ON — system healthy
+//   TRANSFER:        brief OFF flickers mimicking HDD activity LED
+// ─────────────────────────────────────────────────────────────────────────────
+enum LedMode { LED_CONNECTING, LED_CONNECTED_PAUSE, LED_IDLE, LED_TRANSFER };
+LedMode       ledMode         = LED_CONNECTING;
+unsigned long ledPhaseStartMs = 0;
+unsigned long ledLastToggleMs = 0;
+bool          ledState        = false;
+int           ledTransferFlickers = 0;   // remaining flicker count
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Prototypes
 // ─────────────────────────────────────────────────────────────────────────────
-float    measureDistanceCm();
 void     tickTunnelCounter();
-bool     queryObstructionAbort(float distanceCm);
+bool     queryObstructionAbort();
 void     motorOpen();
 void     motorClose();
 void     motorStop();
@@ -83,6 +95,9 @@ void     blinkLed(int times, int delayMs = 150);
 void     lightOn();
 void     lightOff();
 void     setLight(bool on);
+void     ledTick();
+void     ledSetMode(LedMode mode);
+void     ledFlicker();
 void     playReady();
 void     playDoorOpen();
 void     playDoorClose();
@@ -100,10 +115,6 @@ void setup() {
   // Motor outputs: drive LOW first to avoid unintended motion at boot.
   pinMode(PIN_MOTOR_OPEN,  OUTPUT);  digitalWrite(PIN_MOTOR_OPEN,  LOW);
   pinMode(PIN_MOTOR_CLOSE, OUTPUT);  digitalWrite(PIN_MOTOR_CLOSE, LOW);
-
-  // Ultrasonic TRIG LOW before enabling.
-  pinMode(PIN_ULTRASONIC_TRIG, OUTPUT); digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
-  pinMode(PIN_ULTRASONIC_ECHO, INPUT);
 
   // Dual IR tunnel beams: LOW = beam broken.
   pinMode(PIN_IR_SENSOR_A, INPUT);
@@ -138,12 +149,34 @@ void setup() {
   prevReportedState = doorState;
 
   // ── WiFi via WiFiManager — captive-portal fallback on first boot ──────────
-  // Stored creds are used silently on subsequent boots. If none are saved (or
-  // they fail), the board broadcasts WIFI_AP_NAME for WIFI_AP_TIMEOUT_S so the
-  // user can enter credentials without re-flashing.
+  // Rapid blink while WiFi is connecting (blocking call — ledTick() won't run,
+  // so we use a WiFiManager pre-loop callback to drive the blink manually).
+  ledSetMode(LED_CONNECTING);
+
   WiFiManager wm;
   wm.setConfigPortalTimeout(WIFI_AP_TIMEOUT_S);
-  blinkLed(2);
+  wm.setWebServerCallback([&]() {
+    // Called periodically during portal — keep the LED blinking
+    unsigned long now = millis();
+    if (now - ledLastToggleMs >= LED_BLINK_CONNECTING_MS) {
+      ledLastToggleMs = now;
+      ledState = !ledState;
+      digitalWrite(PIN_LED_STATUS, ledState ? HIGH : LOW);
+    }
+  });
+
+  // Pre-connect rapid blink (visible before autoConnect blocks)
+  unsigned long blinkStart = millis();
+  while (millis() - blinkStart < 2000) {
+    unsigned long now = millis();
+    if (now - ledLastToggleMs >= LED_BLINK_CONNECTING_MS) {
+      ledLastToggleMs = now;
+      ledState = !ledState;
+      digitalWrite(PIN_LED_STATUS, ledState ? HIGH : LOW);
+    }
+    yield();
+  }
+
   if (!wm.autoConnect(WIFI_AP_NAME, WIFI_AP_PASS)) {
     DBGLN("[WiFi] Config portal timed out — rebooting");
     ESP.restart();
@@ -151,6 +184,12 @@ void setup() {
 
   DBGF("[WiFi] Connected: %s  IP: %s\n",
     WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+
+  // LED: solid ON for 3 seconds to confirm connection, then constant ON
+  digitalWrite(PIN_LED_STATUS, HIGH);
+  ledState = true;
+  delay(LED_CONNECTED_PAUSE_MS);
+  ledSetMode(LED_IDLE);
 
   // ── Enable buzzer now that boot noise is past ──────────────────────────────
   setBuzzerReady(true);
@@ -165,8 +204,12 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  // Status LED — runs every iteration for smooth blink/flicker
+  ledTick();
+
   // Reconnect WiFi if dropped
   if (WiFi.status() != WL_CONNECTED) {
+    if (ledMode != LED_CONNECTING) ledSetMode(LED_CONNECTING);
     DBGLN("[WiFi] Reconnecting...");
     WiFi.reconnect();
     delay(3000);
@@ -186,6 +229,7 @@ void loop() {
   }
 
   musicTick();
+
   // Post sensor reading
   if (now - lastSensorPostMs >= SENSOR_POST_MS) {
     lastSensorPostMs = now;
@@ -197,6 +241,7 @@ void loop() {
 // Command poll — GET /api/esp32/command
 // ─────────────────────────────────────────────────────────────────────────────
 void pollCommand() {
+  ledFlicker();
   HTTPClient http;
   http.begin(API_COMMAND);
   http.setTimeout(HTTP_TIMEOUT_MS);
@@ -238,7 +283,6 @@ void startDoorMove(const char* direction) {
   doorState = motorIsOpening ? DOOR_OPENING : DOOR_CLOSING;
   obstructionRetries = 0;
   motorPhaseStartMs = millis();
-  lastObstCheckMs = 0;
   motorPhase = MOTOR_MOVING;
 
   DBGF("[Door] Moving %s\n", direction);
@@ -269,7 +313,7 @@ void tickDoorMotor() {
           return;
         }
         // Opening timeout → limit switch never triggered → ERROR
-        if (elapsed >= DOOR_TRAVEL_MS) {
+        if (elapsed >= DOOR_TRAVEL_MS_DEFAULT) {
           motorStop();
           doorState  = DOOR_ERROR;
           reportDoorEvent(motorPrevStr.c_str(), "ERROR");
@@ -280,9 +324,10 @@ void tickDoorMotor() {
         }
 
       } else {
-        // CLOSING: no bottom limit switch — timed close.
-        // Timer expiry = declare CLOSED (motor has run the full stroke).
-        if (elapsed >= DOOR_TRAVEL_MS) {
+        // CLOSING: timed close — motor runs for the full travel duration.
+        // TODO: INA219 stall current detection will replace timed close
+        //       once the I2C driver is integrated (see config.h INA219 section).
+        if (elapsed >= DOOR_TRAVEL_MS_DEFAULT) {
           motorStop();
           reportDoorEvent(motorPrevStr.c_str(), "CLOSED");
           doorState  = DOOR_CLOSED;
@@ -290,47 +335,6 @@ void tickDoorMotor() {
           playDoorClose();
           DBGLN("[Door] CLOSED (timed)");
           return;
-        }
-        // Obstruction check every 50 ms during close
-        if (now - lastObstCheckMs >= 50) {
-          lastObstCheckMs = now;
-          float dist = measureDistanceCm();
-          if (dist > 0 && dist < OBSTRUCTION_CM) {
-            // Local hard stop — always immediate, never waits on the network.
-            motorStop();
-            DBGF("[Door] Ultrasonic stop at %.1f cm — asking AI gate\n", dist);
-            playObstruction();
-
-            // AI confidence gate: only escalate to ERROR if backend is
-            // ≥80% sure something is under the door. Otherwise treat as
-            // a false positive and resume the normal retry cycle.
-            bool aiAbort = queryObstructionAbort(dist);
-            if (aiAbort) {
-              doorState  = DOOR_ERROR;
-              reportDoorEvent(motorPrevStr.c_str(), "ERROR");
-              motorPhase = MOTOR_IDLE;
-              playError();
-              blinkLed(6, 200);
-              DBGLN("[Door] ERROR — AI confirmed obstruction");
-              return;
-            }
-
-            obstructionRetries++;
-            if (obstructionRetries >= DOOR_RETRY_MAX) {
-              doorState  = DOOR_ERROR;
-              reportDoorEvent(motorPrevStr.c_str(), "ERROR");
-              motorPhase = MOTOR_IDLE;
-              playError();
-              blinkLed(6, 200);
-              DBGLN("[Door] ERROR — max retries exceeded");
-              return;
-            }
-
-            // Re-open briefly (3 s) to clear, then pause
-            motorOpen();
-            motorPhaseStartMs = now;
-            motorPhase = MOTOR_REOPEN;
-          }
         }
       }
       break;
@@ -348,9 +352,8 @@ void tickDoorMotor() {
 
     // ── PAUSE: waiting 30 s for obstruction to clear ──────────────────────
     case MOTOR_PAUSE:
-      if (elapsed >= 30000) {
+      if (elapsed >= OBSTRUCTION_WAIT_MS) {
         motorPhaseStartMs = now;
-        lastObstCheckMs = 0;
         motorPhase = MOTOR_MOVING;
         motorClose();
         DBGLN("[Door] Retrying close");
@@ -439,15 +442,15 @@ void tickTunnelCounter() {
 // Returns true if backend is ≥80% confident something is under the door.
 // On network failure, returns false (safe retry) — local stop already happened.
 // ─────────────────────────────────────────────────────────────────────────────
-bool queryObstructionAbort(float distanceCm) {
+bool queryObstructionAbort() {
+  ledFlicker();
   HTTPClient http;
   http.begin(API_OBSTRUCTION_CHECK);
   http.setTimeout(OBSTRUCTION_CHECK_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
 
   JsonDocument req;
-  req["distanceCm"] = distanceCm;
-  req["doorState"]  = doorStateStr(doorState);
+  req["doorState"] = doorStateStr(doorState);
   String body;
   serializeJson(req, body);
 
@@ -473,45 +476,14 @@ bool queryObstructionAbort(float distanceCm) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ultrasonic distance measurement (median of N samples)
-// ─────────────────────────────────────────────────────────────────────────────
-float measureDistanceCm() {
-  float samples[ULTRASONIC_SAMPLES];
-
-  for (int i = 0; i < ULTRASONIC_SAMPLES; i++) {
-    digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
-    delayMicroseconds(2);
-    digitalWrite(PIN_ULTRASONIC_TRIG, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(PIN_ULTRASONIC_TRIG, LOW);
-
-    long duration = pulseIn(PIN_ULTRASONIC_ECHO, HIGH, 30000); // 30 ms timeout
-    samples[i] = (duration == 0) ? 999.0f : (duration * 0.0343f / 2.0f);
-    delay(10);
-  }
-
-  // Sort for median
-  for (int i = 0; i < ULTRASONIC_SAMPLES - 1; i++) {
-    for (int j = i + 1; j < ULTRASONIC_SAMPLES; j++) {
-      if (samples[j] < samples[i]) {
-        float tmp = samples[i]; samples[i] = samples[j]; samples[j] = tmp;
-      }
-    }
-  }
-  return samples[ULTRASONIC_SAMPLES / 2];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/esp32/sensor
 // ─────────────────────────────────────────────────────────────────────────────
 void postSensorReading() {
-  float dist = measureDistanceCm();
-  bool  irA  = (digitalRead(PIN_IR_SENSOR_A) == LOW);
-  bool  irB  = (digitalRead(PIN_IR_SENSOR_B) == LOW);
+  bool irA = (digitalRead(PIN_IR_SENSOR_A) == LOW);
+  bool irB = (digitalRead(PIN_IR_SENSOR_B) == LOW);
 
   JsonDocument doc;
-  doc["distanceCm"]     = dist;
-  doc["irTriggered"]    = irA || irB;  // legacy field: either beam counts
+  doc["irTriggered"]    = irA || irB;
   doc["irATriggered"]   = irA;
   doc["irBTriggered"]   = irB;
   doc["chickensInside"] = chickensInside;
@@ -521,13 +493,14 @@ void postSensorReading() {
   String body;
   serializeJson(doc, body);
 
+  ledFlicker();
   HTTPClient http;
   http.begin(API_SENSOR);
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
 
   int code = http.POST(body);
-  DBGF("[Sensor] POST %d  dist=%.1fcm  inside=%d\n", code, dist, chickensInside);
+  DBGF("[Sensor] POST %d  inside=%d\n", code, chickensInside);
   http.end();
 }
 
@@ -535,6 +508,7 @@ void postSensorReading() {
 // POST /api/esp32/door-event
 // ─────────────────────────────────────────────────────────────────────────────
 void reportDoorEvent(const char* fromState, const char* toState) {
+  ledFlicker();
   JsonDocument doc;
   doc["fromState"]      = fromState;
   doc["toState"]        = toState;
@@ -567,7 +541,7 @@ String doorStateStr(DoorState s) {
   }
 }
 
-// Short blink on the flash LED (GPIO 4). It's very bright — keep blinks short.
+// Short blocking blink on the status LED (GPIO 15). Used for error codes only.
 void blinkLed(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
     setLight(true);
@@ -587,6 +561,92 @@ void lightOff() {
 
 void setLight(bool on) {
   digitalWrite(PIN_LED_STATUS, on ? HIGH : LOW);
+}
+
+// ── Status LED state machine ─────────────────────────────────────────────
+// Phase 1: rapid blink while WiFi is connecting
+// Phase 2: solid ON for 3 seconds after WiFi connects
+// Phase 3: constant ON, brief OFF flickers on HTTP traffic (HDD style)
+
+void ledSetMode(LedMode mode) {
+  ledMode = mode;
+  ledPhaseStartMs = millis();
+  ledLastToggleMs = millis();
+
+  switch (mode) {
+    case LED_CONNECTING:
+      ledState = false;
+      digitalWrite(PIN_LED_STATUS, LOW);
+      break;
+    case LED_CONNECTED_PAUSE:
+      ledState = true;
+      digitalWrite(PIN_LED_STATUS, HIGH);
+      break;
+    case LED_IDLE:
+      ledState = true;
+      digitalWrite(PIN_LED_STATUS, HIGH);
+      break;
+    case LED_TRANSFER:
+      // Entered by ledFlicker(), not directly
+      break;
+  }
+}
+
+void ledTick() {
+  unsigned long now = millis();
+
+  switch (ledMode) {
+    case LED_CONNECTING:
+      // Rapid blink: toggle every LED_BLINK_CONNECTING_MS
+      if (now - ledLastToggleMs >= LED_BLINK_CONNECTING_MS) {
+        ledLastToggleMs = now;
+        ledState = !ledState;
+        digitalWrite(PIN_LED_STATUS, ledState ? HIGH : LOW);
+      }
+      break;
+
+    case LED_CONNECTED_PAUSE:
+      // Solid ON for LED_CONNECTED_PAUSE_MS, then transition to IDLE
+      if (now - ledPhaseStartMs >= LED_CONNECTED_PAUSE_MS) {
+        ledSetMode(LED_IDLE);
+      }
+      break;
+
+    case LED_IDLE:
+      // Constant ON — nothing to do
+      if (!ledState) {
+        ledState = true;
+        digitalWrite(PIN_LED_STATUS, HIGH);
+      }
+      break;
+
+    case LED_TRANSFER:
+      // Brief OFF flicker, then back to IDLE
+      if (now - ledPhaseStartMs >= LED_TRANSFER_FLICKER_MS) {
+        ledTransferFlickers--;
+        if (ledTransferFlickers <= 0) {
+          ledSetMode(LED_IDLE);
+        } else {
+          // Another flicker cycle: ON briefly, then OFF again
+          ledState = true;
+          digitalWrite(PIN_LED_STATUS, HIGH);
+          ledPhaseStartMs = now;
+          // The next tick will turn it off after the gap
+        }
+      }
+      break;
+  }
+}
+
+// Called before each HTTP request — triggers a brief OFF flicker (HDD style).
+// LED is normally ON; this interrupts it momentarily.
+void ledFlicker() {
+  if (ledMode == LED_CONNECTING || ledMode == LED_CONNECTED_PAUSE) return;
+  ledMode = LED_TRANSFER;
+  ledTransferFlickers = 1;
+  ledPhaseStartMs = millis();
+  ledState = false;
+  digitalWrite(PIN_LED_STATUS, LOW);
 }
 
 // ── Melodies ─────────────────────────────────────────────────────────────────

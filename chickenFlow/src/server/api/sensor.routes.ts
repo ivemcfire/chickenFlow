@@ -23,7 +23,6 @@ sensorRouter.post('/sensor', async (req, res, next) => {
     }
 
     await db.insert(sensorReadings).values({
-      distanceCm: body.distanceCm ?? null,
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
       irATriggered: body.irATriggered ?? false,
@@ -34,7 +33,6 @@ sensorRouter.post('/sensor', async (req, res, next) => {
     });
 
     wsBroadcaster.broadcast('sensor:reading', {
-      distanceCm: body.distanceCm ?? null,
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
       irATriggered: body.irATriggered ?? false,
@@ -90,13 +88,13 @@ sensorRouter.post('/door-event', async (req, res, next) => {
 });
 
 // ── Obstruction-check (AI safety gate) ───────────────────────────────────────
-// ESP32 calls this immediately after its local ultrasonic stop. Returns
+// ESP32 calls this after INA219 detects a motor current stall. Returns
 // { abort: true } only when Gemini is ≥80% confident something is under the
 // door; otherwise the firmware resumes the close cycle.
 sensorRouter.post('/obstruction-check', async (req, res, next) => {
   try {
     const body = req.body as ObstructionCheckRequest;
-    const result = await assessObstruction(body.distanceCm, body.doorState);
+    const result = await assessObstruction(body.doorState);
     const response: ObstructionCheckResponse = {
       abort: result.abort,
       confidence: result.confidence,

@@ -78,7 +78,7 @@ The system uses Angular Signals for reactive state management.
 - **Retention**: Logs are kept for **30 days** before being permanently discarded.
 
 ## 5. Safety Systems
-- **Obstruction Detection**: Simulated via `distance` (ultrasonic) and `irTriggered` (IR beam) signals.
+- **Obstruction Detection**: Detected via INA219 motor current stall pattern + torque limiter, confirmed by AI vision gate.
 - **Emergency Stop & Error Alerts**:
   - **Retry Sequence**: If an obstruction is detected during closing, the door will open and try to close automatically 3 times.
   - **Error State**: If not successful after 3 attempts, the system enters an `ERROR` state and halts.

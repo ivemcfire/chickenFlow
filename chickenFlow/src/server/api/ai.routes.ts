@@ -25,7 +25,6 @@ aiRouter.post('/analyze', async (req, res, next) => {
       tempMax: body.tempMax,
       weatherLock: body.weatherLock,
       serviceMode: body.serviceMode,
-      obstructionDistance: body.obstructionDistance,
       contextNote: body.contextNote,
       currentTimeLocal: new Date().toLocaleTimeString(),
     });

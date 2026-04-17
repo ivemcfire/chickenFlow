@@ -20,7 +20,7 @@ Rules:
 - Respond in 15-25 words maximum.
 - Tone: professional, slightly warm — never flippant when safety is at stake.
 - Use "WARNING:" prefix if chickens_inside / total_chickens < 0.5 and door is CLOSED.
-- If obstruction_distance_cm < 20 and door is CLOSING or ERROR: mention obstruction.
+- If door is ERROR: mention possible obstruction or motor fault.
 - If weather_lock is true: always reference safety confinement.
 - If service_mode is true: note that automated systems are paused.
 - If all chickens inside and door CLOSED: brief reassurance.
@@ -56,7 +56,6 @@ export interface CoopTelemetry {
   tempMax?: number;
   weatherLock: boolean;
   serviceMode: boolean;
-  obstructionDistance?: number;
   contextNote?: string;
   sunriseLocal?: string;
   sunsetLocal?: string;
@@ -75,7 +74,6 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
     temp_max_c: telemetry.tempMax ?? null,
     weather_lock_active: telemetry.weatherLock,
     service_mode_active: telemetry.serviceMode,
-    obstruction_distance_cm: telemetry.obstructionDistance ?? null,
     sunrise_local: telemetry.sunriseLocal ?? null,
     sunset_local: telemetry.sunsetLocal ?? null,
     context_note: telemetry.contextNote ?? null,
@@ -121,7 +119,6 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
     tempMax: telemetry.tempMax,
     weatherLock: telemetry.weatherLock,
     serviceMode: telemetry.serviceMode,
-    obstructionDistance: telemetry.obstructionDistance,
     contextNote: telemetry.contextNote,
     analysisText,
     isWarning,
@@ -153,7 +150,7 @@ export async function fetchCamSnapshot(): Promise<Buffer> {
 
 const OBSTRUCTION_PROMPT = `You are the ChickenFlow obstruction safety gate.
 
-An ultrasonic sensor on the coop door just triggered while the door was closing. Your job: inspect the attached coop image and decide whether a chicken, animal, or object is *directly* under the door opening.
+The door motor detected a current stall while closing, indicating a possible obstruction. Your job: inspect the attached coop image and decide whether a chicken, animal, or object is *directly* under the door opening.
 
 Return ONLY valid JSON:
 {
@@ -164,7 +161,7 @@ Return ONLY valid JSON:
 Rules:
 - 0.8-1.0: clearly visible chicken/animal/object in the door threshold area.
 - 0.4-0.79: something is there but unclear (shadow, partial occlusion, motion blur).
-- 0.0-0.39: threshold appears clear; likely a false ultrasonic trigger.
+- 0.0-0.39: threshold appears clear; likely a false motor stall trigger.
 - If image is too dark or unusable: confidence 0.5, reason "image unusable".
 - Reason: max 10 words.`;
 
@@ -174,7 +171,7 @@ export interface ObstructionAssessment {
   reason: string;
 }
 
-export async function assessObstruction(distanceCm: number, doorState: string): Promise<ObstructionAssessment> {
+export async function assessObstruction(doorState: string): Promise<ObstructionAssessment> {
   const startMs = Date.now();
   let confidence = 0.5;
   let reason = 'default';
@@ -193,7 +190,7 @@ export async function assessObstruction(distanceCm: number, doorState: string): 
           role: 'user',
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
-            { text: JSON.stringify({ distance_cm: distanceCm, door_state: doorState }) },
+            { text: JSON.stringify({ door_state: doorState }) },
           ],
         },
       ],
@@ -227,7 +224,6 @@ export async function assessObstruction(distanceCm: number, doorState: string): 
     doorState,
     chickensInside: 0,
     totalChickens: 0,
-    obstructionDistance: distanceCm,
     contextNote: `obstruction-check confidence=${confidence.toFixed(2)} abort=${abort}`,
     analysisText: reason,
     isWarning: abort,
@@ -271,7 +267,6 @@ export async function analyzeCapture(captureId: number, imageBuffer: Buffer): Pr
     weather_code: todayWeather?.weatherCode ?? null,
     weather_lock_active: todayWeather?.isSevere ?? false,
     service_mode_active: currentSettings?.serviceMode ?? false,
-    obstruction_distance_cm: latestSensor?.distanceCm ?? null,
   };
 
   let anomalyDetected = false;

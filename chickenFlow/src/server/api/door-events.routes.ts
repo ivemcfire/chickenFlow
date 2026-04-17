@@ -53,7 +53,6 @@ doorEventsRouter.post('/command', async (req, res, next) => {
       trigger: body.trigger ?? 'manual',
       isManual: (body.trigger ?? 'manual') === 'manual',
       chickensInside: body.chickensInside,
-      obstructionDistance: body.obstructionDistance,
     });
 
     // Queue command for ESP32 poll

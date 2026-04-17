@@ -17,11 +17,9 @@ export interface DoorCommandRequest {
   command: 'OPEN' | 'CLOSE';
   trigger: DoorTrigger;
   chickensInside?: number;
-  obstructionDistance?: number;
 }
 
 export interface SensorReadingRequest {
-  distanceCm?: number;
   topSensorTriggered?: boolean;  // door-open limit switch (pin 12)
   irTriggered?: boolean;         // legacy single-beam field
   irATriggered?: boolean;        // tunnel beam A (coop side)
@@ -32,7 +30,6 @@ export interface SensorReadingRequest {
 }
 
 export interface ObstructionCheckRequest {
-  distanceCm: number;
   doorState: string;
 }
 
@@ -60,7 +57,6 @@ export interface AiAnalyzeRequest {
   tempMax?: number;
   weatherLock: boolean;
   serviceMode: boolean;
-  obstructionDistance?: number;
   contextNote?: string;
   // Optional: camera capture id to include image in analysis
   captureId?: number;

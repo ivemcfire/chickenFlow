@@ -38,7 +38,7 @@ export const doorEvents = pgTable('door_events', {
 // Time-series from ESP32-S2 Mini. Pruned to 7 days by cleanup job.
 export const sensorReadings = pgTable('sensor_readings', {
   id: serial('id').primaryKey(),
-  // distanceCm is nullable — S2 Mini uses topSensorTriggered (limit switch on pin 12) instead of ultrasonic
+  // Legacy column — kept for migration compatibility, no longer populated
   distanceCm: doublePrecision('distance_cm'),
   topSensorTriggered: boolean('top_sensor_triggered').notNull().default(false),
   irTriggered: boolean('ir_triggered').notNull().default(false),

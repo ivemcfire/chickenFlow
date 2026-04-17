@@ -55,7 +55,8 @@ The system uses Angular Signals for reactive state management.
 ## 5. Safety Systems
 
 ### Obstruction Detection (Anti-Crush Protocol)
-- Simulated via `distance` (ultrasonic) and `irTriggered` (IR beam).
+- Detected via **INA219 motor current stall pattern** (hardware) + **torque limiter** (mechanical safety).
+- When the ESP32 detects a stall current during closing, the motor halts immediately and the AI vision gate (`/api/esp32/obstruction-check`) confirms via camera image.
 - **Retry Sequence**: 
   - If triggered during closing, the door returns to `OPEN`.
   - Waits 30 seconds, then retries (Max 3 attempts).

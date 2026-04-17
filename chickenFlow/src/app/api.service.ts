@@ -31,7 +31,6 @@ export interface ApiDoorState {
 }
 
 export interface ApiSensorReading {
-  distanceCm: number;
   irTriggered: boolean;
   chickensInside: number;
   totalChickens: number;
@@ -135,7 +134,6 @@ export class ApiService {
     tempMax?: number;
     weatherLock: boolean;
     serviceMode: boolean;
-    obstructionDistance?: number;
     contextNote?: string;
   }) {
     return this.http.post<ApiAiResponse>('/api/ai/analyze', body);

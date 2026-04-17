@@ -55,7 +55,6 @@ export class CoopStateService {
   weatherUpdatedAt = signal<string>('');
   sunrise = signal<string>('06:00');
   sunset = signal<string>('18:00');
-  distance = signal<number>(45);
   irTriggered = signal<boolean>(false);
   systemOnline = signal<boolean>(false);
   backendOnline = signal<boolean>(true);
@@ -140,7 +139,6 @@ export class CoopStateService {
     this.api.getLatestSensor().subscribe({
       next: (s) => {
         if (s) {
-          this.distance.set(s.distanceCm);
           this.irTriggered.set(s.irTriggered);
         }
       },
@@ -180,8 +178,7 @@ export class CoopStateService {
           break;
         }
         case 'sensor:reading': {
-          const p = msg.payload as { distanceCm: number; irTriggered: boolean; chickensInside: number; doorState: string };
-          this.distance.set(p.distanceCm);
+          const p = msg.payload as { irTriggered: boolean; chickensInside: number; doorState: string };
           this.irTriggered.set(p.irTriggered);
           this.systemOnline.set(true);
           break;
@@ -609,7 +606,6 @@ export class CoopStateService {
       tempMax: weather?.temp,
       weatherLock: this.weatherLock(),
       serviceMode: this.serviceMode(),
-      obstructionDistance: this.distance(),
       contextNote: context || undefined,
     }).subscribe({
       next: () => {
