@@ -12,9 +12,8 @@ View your app in AI Studio: https://ai.studio/apps/e871d0f8-3f40-4789-a2e7-f1fab
 
 **Prerequisites:**  Node.js
 
-
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Copy `.env.example` to `.env` and set `OLLAMA_URL`, `OLLAMA_MODEL`, `DATABASE_URL`, `FRIGATE_URL`, and `FRIGATE_COOP_CAM` as needed. No cloud API key is required — AI runs locally via Ollama.
 3. Run the app:
    `npm run dev`

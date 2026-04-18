@@ -28,11 +28,6 @@ spec:
             - configMapRef:
                 name: chickenflow-config
           env:
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: ai-secret
-                  key: api-key
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:

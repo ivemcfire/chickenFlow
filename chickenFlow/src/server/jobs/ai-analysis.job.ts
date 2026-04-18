@@ -1,7 +1,7 @@
 import { db } from '../db/index.js';
 import { sensorReadings, settings, weatherCache, statusMessages } from '../db/schema.js';
 import { eq, desc, sql } from 'drizzle-orm';
-import { analyzeCoopTelemetry } from '../services/claude.service.js';
+import { analyzeCoopTelemetry } from '../services/ollama.service.js';
 import { randomUUID } from 'node:crypto';
 
 export async function aiAnalysisJob(): Promise<void> {

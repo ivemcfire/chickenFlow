@@ -68,7 +68,7 @@ Before running any deployment steps, verify:
 - [ ] MetalLB installed OR you will use NodePort — decide now
 - [ ] Docker or Buildah available for image build
 - [ ] `gh` CLI authenticated (`gh auth status`)
-- [ ] You have the `ANTHROPIC_API_KEY` value for the secret
+- [ ] Ollama is running on node `one6t` and the `ollama` Service exists in the `chickenflow` namespace
 - [ ] You know which node will hold the PVC (`kubectl get nodes`)
 - [ ] Port 4000 (or NodePort 30400) is reachable from the ESP32-CAM subnet
 
@@ -126,20 +126,14 @@ kubectl apply -f chickenFlow/deploy/namespace.yaml
 # Expected: namespace/chickenflow created (or configured)
 ```
 
-### 2c. Create the API key secret
+### 2c. Remove legacy AI secret (if upgrading from pre-Ollama)
 
-**Do NOT use the `deploy/secret.yaml` file** — it contains only a placeholder. Create the secret imperatively so the real key is never in git:
+The `deploy/secret.yaml` file and the `ai-secret` cluster secret are no longer used. No API key is required — Ollama runs in-cluster on `one6t` with no credentials.
+
+If upgrading a cluster that previously had `ai-secret`:
 
 ```bash
-make secret-create KEY=sk-ant-YOUR_REAL_KEY_HERE
-# or directly:
-kubectl create secret generic ai-secret \
-  --from-literal=api-key="sk-ant-YOUR_REAL_KEY_HERE" \
-  --namespace=chickenflow \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Verify (shows only the key name, not value)
-kubectl get secret ai-secret -n chickenflow
+kubectl delete secret ai-secret -n chickenflow --ignore-not-found
 ```
 
 ### 2d. Enable ghcr.io image pull (if repo is private)
@@ -168,7 +162,7 @@ make deploy
 
 This applies in order:
 1. `namespace.yaml`
-2. `configmap.yaml` — PORT, DB_PATH, CAPTURES_DIR
+2. `configmap.yaml` — PORT, DB_PATH, CAPTURES_DIR, OLLAMA_URL, OLLAMA_MODEL
 3. `pvc.yaml` — 2Gi local-path PVC
 4. `deployment.yaml` — single-replica pod with readiness/liveness probes
 5. `service.yaml` — LoadBalancer (MetalLB) or NodePort
@@ -314,7 +308,6 @@ kubectl describe pod -n chickenflow -l app=chickenflow
 kubectl logs -n chickenflow -l app=chickenflow --previous
 ```
 Common causes:
-- Missing `ai-secret` → create it with `make secret-create KEY=...`
 - DB path not writable → check PVC is bound (`kubectl get pvc -n chickenflow`)
 - Image pull error → verify ghcr.io access or run `make push`
 

@@ -92,7 +92,6 @@ export const aiAnalysisLog = pgTable('ai_analysis_log', {
   model: text('model').notNull().default('gemini-2.5-flash-lite'),
   promptTokens: integer('prompt_tokens'),
   completionTokens: integer('completion_tokens'),
-  hasImage: boolean('has_image').notNull().default(false),
   // Telemetry snapshot
   doorState: text('door_state').notNull(),
   chickensInside: integer('chickens_inside').notNull(),
@@ -106,9 +105,6 @@ export const aiAnalysisLog = pgTable('ai_analysis_log', {
   // Response
   analysisText: text('analysis_text'),
   isWarning: boolean('is_warning').notNull().default(false),
-  // Vision-specific (null for telemetry-only calls)
-  anomalyDetected: boolean('anomaly_detected'),
-  threatType: text('threat_type'),
   countConfirmed: boolean('count_confirmed'),
   errorMessage: text('error_message'),
   durationMs: integer('duration_ms'),
@@ -138,12 +134,7 @@ export const cameraCaptures = pgTable('camera_captures', {
   heightPx: integer('height_px'),
   doorStateAtCapture: text('door_state_at_capture'),
   chickensInsideAtCapture: integer('chickens_inside_at_capture'),
-  isAnomaly: boolean('is_anomaly').notNull().default(false),
-  // 'predator' | 'obstruction' | 'injury' | null
-  threatType: text('threat_type'),
-  aiAnalysisId: integer('ai_analysis_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('camera_captures_created_at_idx').on(t.createdAt),
-  index('camera_captures_is_anomaly_idx').on(t.isAnomaly),
 ]);

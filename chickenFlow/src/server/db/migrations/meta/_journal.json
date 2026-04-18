@@ -22,6 +22,13 @@
       "when": 1776240000000,
       "tag": "0002_chicken_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776494752183,
+      "tag": "0003_nappy_ben_parker",
+      "breakpoints": true
     }
   ]
 }

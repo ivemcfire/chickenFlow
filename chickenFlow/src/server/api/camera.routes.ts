@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { cameraCaptures } from '../db/schema.js';
 import { desc } from 'drizzle-orm';
-import { fetchCamSnapshot } from '../services/claude.service.js';
+import { fetchCamSnapshot } from '../services/frigate.service.js';
 
 export const cameraRouter = Router();
 

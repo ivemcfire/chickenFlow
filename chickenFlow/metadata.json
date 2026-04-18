@@ -1,5 +1,5 @@
 {
   "name": "ChickenFlow - AI ChickenCoop Door",
-  "description": "Smart chicken coop door with Gemini AI intelligence, IR counting, and obstruction detection.",
+  "description": "Smart chicken coop door with AI intelligence, IR counting, and obstruction detection.",
   "requestFramePermissions": []
 }

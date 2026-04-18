@@ -4,7 +4,6 @@ import { sensorReadings, settings, doorEvents } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { markEsp32Online, getEsp32Status } from '../jobs/esp32-heartbeat.job.js';
-import { assessObstruction } from '../services/claude.service.js';
 import type { SensorReadingRequest, ObstructionCheckRequest, ObstructionCheckResponse } from './types.js';
 
 export const sensorRouter = Router();
@@ -87,23 +86,18 @@ sensorRouter.post('/door-event', async (req, res, next) => {
   }
 });
 
-// ── Obstruction-check (AI safety gate) ───────────────────────────────────────
-// ESP32 calls this after INA219 detects a motor current stall. Returns
-// { abort: true } only when Gemini is ≥80% confident something is under the
-// door; otherwise the firmware resumes the close cycle.
-sensorRouter.post('/obstruction-check', async (req, res, next) => {
-  try {
-    const body = req.body as ObstructionCheckRequest;
-    const result = await assessObstruction(body.doorState);
-    const response: ObstructionCheckResponse = {
-      abort: result.abort,
-      confidence: result.confidence,
-      reason: result.reason,
-    };
-    res.json(response);
-  } catch (err) {
-    next(err);
-  }
+// ── Obstruction-check (hardware-authoritative) ────────────────────────────────
+// ESP32 calls this after INA219 detects a motor current stall. Hardware is now
+// fully authoritative for obstruction detection — always returns abort: false so
+// the firmware follows its own dual-IR + motor-stall logic without AI override.
+sensorRouter.post('/obstruction-check', (req, res) => {
+  void (req.body as ObstructionCheckRequest);
+  const response: ObstructionCheckResponse = {
+    abort: false,
+    confidence: 0,
+    reason: 'hardware-authoritative',
+  };
+  res.json(response);
 });
 
 // ── ESP32 command poll ────────────────────────────────────────────────────────

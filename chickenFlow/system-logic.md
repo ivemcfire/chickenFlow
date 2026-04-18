@@ -5,7 +5,7 @@ This document outlines the core functions, state management, and automated logic
 ## 1. Architecture Overview
 - **Type**: Local-only Demo/Testing Application.
 - **Frontend**: Angular 21 with Signals for reactive state.
-- **AI**: Integrated via Gemini API for real-time status analysis and anomaly detection.
+- **AI**: Local Ollama inference (`qwen2.5:3b-instruct-q4_K_M` on node `one6t`) for hourly telemetry status analysis. Burst cron only — no continuous inference.
 - **Time Source**: Purely API-driven (Open-Meteo). All physical light sensor logic is removed to ensure reliability regardless of local ambient lighting conditions.
 
 ## 2. Core State Management (`CoopStateService`)
@@ -55,8 +55,9 @@ The system uses Angular Signals for reactive state management.
 ## 5. Safety Systems
 
 ### Obstruction Detection (Anti-Crush Protocol)
-- Detected via **INA219 motor current stall pattern** (hardware) + **torque limiter** (mechanical safety).
-- When the ESP32 detects a stall current during closing, the motor halts immediately and the AI vision gate (`/api/esp32/obstruction-check`) confirms via camera image.
+- Detected via **dual-IR tunnel sensors** + **motor stall detection** on the ESP32-S2 Mini (hardware-authoritative).
+- When the ESP32 detects a stall current or IR blockage during closing, the motor halts immediately and the door returns to `OPEN`.
+- The `/api/esp32/obstruction-check` endpoint exists but performs no AI analysis — it returns a safe pass-through (`{ abort: false, confidence: 0, reason: 'hardware-authoritative' }`). Hardware is the sole authority.
 - **Retry Sequence**: 
   - If triggered during closing, the door returns to `OPEN`.
   - Waits 30 seconds, then retries (Max 3 attempts).
@@ -66,6 +67,6 @@ The system uses Angular Signals for reactive state management.
 - **Retention**: Logs are capped at the **latest 200 entries** to maintain performance.
 - **Pinning**: `ERROR`, `weatherLock`, and `serviceMode` alerts remain pinned until resolved.
 
-## 7. AI Integration (Gemini API)
-- **Status Analysis**: Periodic telemetry analysis.
-- **Anomaly Detection**: Gemini flags irregular homing patterns (e.g., chickens taking longer than average to enter) to alert the user of potential illness or predators.
+## 7. AI Integration (Ollama)
+- **Status Analysis**: Hourly telemetry analysis via local Ollama (`qwen2.5:3b-instruct-q4_K_M` on node `one6t`). Structured JSON telemetry in → 15-25 word status text out. Burst cron only; no continuous inference.
+- **Vision analysis: removed.** Camera (Frigate/cam01) is observational only, proxied via `/api/camera/snapshot`. No LLM vision or anomaly classification is performed.
