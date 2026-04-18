@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# chickenflow deploy — one-shot: commit + push + build + push image + rollout + health
+# chickenflow — commit/push/deploy helper
 #
 # Usage:
-#   chickenflow deploy                    # uses auto commit message
-#   chickenflow deploy "fix manual mode"  # custom commit message
+#   chickenflow push                      # commit + push production to GitHub (no deploy)
+#   chickenflow push "fix manual mode"    # …with custom commit message
+#   chickenflow deploy                    # commit + push + build + image push + rollout + health
+#   chickenflow deploy "fix manual mode"  # …with custom commit message
 #
 # Wire up once with:
 #   echo 'chickenflow() { /home/user/chickenFlow/scripts/chickenflow-deploy.sh "$@"; }' >> ~/.bashrc
@@ -20,12 +22,16 @@ cd "$REPO"
 cmd="${1:-deploy}"
 shift || true
 
-if [[ "$cmd" != "deploy" ]]; then
-  echo "Usage: chickenflow deploy [commit message]" >&2
-  exit 2
-fi
+case "$cmd" in
+  push|deploy) ;;
+  *)
+    echo "Usage: chickenflow {push|deploy} [commit message]" >&2
+    exit 2
+    ;;
+esac
 
-msg="${1:-deploy: $(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+default_msg_prefix="$cmd"
+msg="${1:-$default_msg_prefix: $(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 step() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$*"; }
@@ -34,7 +40,7 @@ fail() { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # ── 1. Sanity: branch must be production ─────────────────────────────────────
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 if [[ "$current_branch" != "$BRANCH" ]]; then
-  fail "Must be on '$BRANCH' branch (currently on '$current_branch'). Refusing to deploy."
+  fail "Must be on '$BRANCH' branch (currently on '$current_branch'). Refusing to $cmd."
 fi
 
 # ── 2. Commit any pending changes ────────────────────────────────────────────
@@ -51,6 +57,13 @@ fi
 step "Pushing to origin/$BRANCH"
 git push origin "$BRANCH"
 ok "Pushed to GitHub"
+
+# `push` stops here — no build, no rollout.
+if [[ "$cmd" == "push" ]]; then
+  SHA=$(git rev-parse --short HEAD)
+  ok "chickenflow $SHA pushed to origin/$BRANCH. Run 'chickenflow deploy' to roll out."
+  exit 0
+fi
 
 SHA=$(git rev-parse --short HEAD)
 
