@@ -21,12 +21,19 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       totalChickens = row?.totalChickens ?? 10;
     }
 
+    // Clamp chickensInside to [0, totalChickens] — ESP32 IR counter can drift
+    const rawInside = body.chickensInside;
+    const clampedInside = Math.max(0, Math.min(rawInside, totalChickens));
+    if (rawInside > totalChickens) {
+      console.warn(`[sensor] Drift detected: chickensInside=${rawInside} exceeds totalChickens=${totalChickens}; clamped to ${clampedInside}`);
+    }
+
     await db.insert(sensorReadings).values({
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
       irATriggered: body.irATriggered ?? false,
       irBTriggered: body.irBTriggered ?? false,
-      chickensInside: body.chickensInside,
+      chickensInside: clampedInside,
       totalChickens,
       doorState: body.doorState,
     });
@@ -36,7 +43,7 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       irTriggered: body.irTriggered ?? false,
       irATriggered: body.irATriggered ?? false,
       irBTriggered: body.irBTriggered ?? false,
-      chickensInside: body.chickensInside,
+      chickensInside: clampedInside,
       doorState: body.doorState,
     });
 
