@@ -61,9 +61,14 @@ async function ollamaGenerate(opts: {
       system: opts.system,
       prompt: opts.prompt,
       stream: false,
+      // Qwen3 hybrid reasoning: disable chain-of-thought for this
+      // short-form deterministic telemetry narration. Saves tokens + heat.
+      think: false,
       options: { num_predict: opts.maxTokens },
     }),
-    signal: AbortSignal.timeout(20_000),
+    // Hourly burst cron + 10min keep-alive means each call is effectively
+    // cold-start (measured ~25s for qwen3:4b to load on SD845). 60s with slack.
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!resp.ok) {

@@ -81,6 +81,7 @@ ok "Image pushed"
 step "Applying k3s manifests"
 kubectl apply -f chickenFlow/deploy/namespace.yaml
 kubectl apply -f chickenFlow/deploy/configmap.yaml
+kubectl apply -f chickenFlow/deploy/ollama-service.yaml
 kubectl apply -f chickenFlow/deploy/pvc.yaml
 kubectl apply -f chickenFlow/deploy/deployment.yaml
 kubectl apply -f chickenFlow/deploy/service.yaml

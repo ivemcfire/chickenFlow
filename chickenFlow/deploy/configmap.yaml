@@ -11,4 +11,4 @@ data:
   MQTT_URL: "mqtt://mosquitto.hydroflow.svc.cluster.local:1883"
   COOP_TZ: "Europe/Sofia"
   OLLAMA_URL: "http://ollama.chickenflow.svc.cluster.local:11434"
-  OLLAMA_MODEL: "qwen2.5:3b-instruct-q4_K_M"
+  OLLAMA_MODEL: "qwen3:4b-instruct-2507-q4_K_M"
