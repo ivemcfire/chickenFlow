@@ -29,6 +29,13 @@
       "when": 1776494752183,
       "tag": "0003_nappy_ben_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776700800000,
+      "tag": "0004_manual_override",
+      "breakpoints": true
     }
   ]
 }

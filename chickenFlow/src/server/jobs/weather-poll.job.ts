@@ -15,6 +15,23 @@ export async function weatherPollJob(): Promise<void> {
       .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 
     if (today?.isSevere) {
+      // Respect manual override — the keeper is intentionally holding the door
+      // open. Severe weather will be handled by the normal solar tick once the
+      // override expires.
+      const [cfg] = await db.select({
+        serviceMode: settings.serviceMode,
+        manualOverrideUntil: settings.manualOverrideUntil,
+      }).from(settings).where(eq(settings.id, 1));
+
+      if (cfg?.serviceMode) {
+        console.log('[Job:weather-poll] Severe weather but service mode active — skipping auto-close');
+        return;
+      }
+      if (cfg?.manualOverrideUntil && cfg.manualOverrideUntil.getTime() > Date.now()) {
+        console.log('[Job:weather-poll] Severe weather but manual override active — skipping auto-close');
+        return;
+      }
+
       const [latestDoor] = await db.select({ toState: doorEvents.toState })
         .from(doorEvents)
         .orderBy(desc(doorEvents.createdAt))

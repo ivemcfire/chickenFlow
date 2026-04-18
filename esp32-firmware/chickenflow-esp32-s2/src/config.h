@@ -34,7 +34,16 @@
 // UI / alerts
 #define PIN_BUZZER            14    // Passive buzzer — LEDC PWM
 #define PIN_LED_STATUS        15
-#define PIN_COOP_LIGHT        16    // Spare output
+#define PIN_COOP_LIGHT        16    // Service-mode indicator LED (HIGH = serviceMode on)
+
+// Manual override button — NO, wired between GPIO and GND (INPUT_PULLUP).
+// 5s press  = door OPEN for 15 min (override), two short chirps.
+// 10s press = service mode ON + door OPEN, one 2 s tone.
+#define PIN_MANUAL_BUTTON     13
+#define BUTTON_DEBOUNCE_MS             50
+#define BUTTON_PRESS_OVERRIDE_MS     5000
+#define BUTTON_PRESS_SERVICE_MS     10000
+#define SERVICE_MODE_REMINDER_MS   300000   // Chirp every 5 min while in service mode
 
 // ── LEDC channels ────────────────────────────────────────────────────────────
 #define LEDC_BUZZER_CHANNEL     0

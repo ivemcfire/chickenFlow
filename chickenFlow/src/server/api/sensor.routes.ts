@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { db } from '../db/index.js';
-import { sensorReadings, settings, doorEvents } from '../db/schema.js';
+import { sensorReadings, settings, doorEvents, statusMessages } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { markEsp32Online, getEsp32Status } from '../jobs/esp32-heartbeat.job.js';
 import type { SensorReadingRequest, ObstructionCheckRequest, ObstructionCheckResponse } from './types.js';
+
+const MANUAL_OVERRIDE_DURATION_MS = 15 * 60 * 1000;
 
 export const sensorRouter = Router();
 
@@ -109,23 +111,148 @@ sensorRouter.post('/obstruction-check', (req, res) => {
 
 // ── ESP32 command poll ────────────────────────────────────────────────────────
 // Reads and resets pendingCommand inside a transaction to prevent double-delivery.
+// Also returns the current `serviceMode` so the ESP32 can mirror the state LED
+// and reminder chirps without ever issuing a POST to sync.
 sensorRouter.get('/command', async (_req, res, next) => {
   try {
     markEsp32Online();
-    const action = await db.transaction(async (tx) => {
-      const [row] = await tx.select({ pendingCommand: settings.pendingCommand })
+    const { action, serviceMode } = await db.transaction(async (tx) => {
+      const [row] = await tx.select({
+        pendingCommand: settings.pendingCommand,
+        serviceMode: settings.serviceMode,
+      })
         .from(settings)
         .where(eq(settings.id, 1));
       const cmd = row?.pendingCommand ?? 'NONE';
+      const svc = row?.serviceMode ?? false;
       if (cmd !== 'NONE') {
         await tx.update(settings)
           .set({ pendingCommand: 'NONE' })
           .where(eq(settings.id, 1));
       }
-      return cmd;
+      return { action: cmd, serviceMode: svc };
     });
 
-    res.json({ action, delay: 0 });
+    res.json({ action, serviceMode, delay: 0 });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Manual push-button on ESP32 ───────────────────────────────────────────────
+// Only mutation path for button-driven state. Poll `/command` returns but never
+// changes `serviceMode` — keeping this split avoids poll→POST feedback loops
+// and means a mid-press crash leaves backend state untouched.
+//
+// Both thresholds are toggles:
+//   type=override (5 s press)
+//     • door CLOSED → OPEN + manualOverrideUntil = now + 15 min
+//     • door OPEN   → CLOSE + clear override (returns to automation)
+//     Never touches serviceMode — that's the 10 s press's job.
+//   type=service (10 s press)
+//     • toggles serviceMode, also toggles door (CLOSED→OPEN, OPEN→CLOSE)
+//     • always clears manualOverrideUntil
+//
+// Door-state decision uses the latest door_events row (same pattern as the
+// solar job); OPENING/CLOSING counts as already-heading-that-way so rapid
+// button mashing doesn't reverse an in-progress movement.
+sensorRouter.post('/manual-button', async (req, res, next) => {
+  try {
+    const body = req.body as { type?: string };
+    const type = body.type;
+
+    if (type !== 'override' && type !== 'service') {
+      res.status(400).json({ ok: false, error: 'type must be "override" or "service"' });
+      return;
+    }
+
+    markEsp32Online();
+
+    const [latest] = await db.select({ toState: doorEvents.toState })
+      .from(doorEvents)
+      .orderBy(desc(doorEvents.createdAt))
+      .limit(1);
+    const doorOpenish = latest?.toState === 'OPEN' || latest?.toState === 'OPENING';
+
+    if (type === 'override') {
+      if (doorOpenish) {
+        await db.update(settings)
+          .set({ pendingCommand: 'CLOSE', manualOverrideUntil: null })
+          .where(eq(settings.id, 1));
+
+        const text = 'Manual override cancelled via physical button — door closing, automation resumed.';
+        await db.insert(statusMessages).values({
+          id: `manual-override-cancel-${Date.now()}`,
+          text,
+          timestamp: new Date().toISOString(),
+          isWarning: false,
+          category: 'MANUAL_OVERRIDE',
+        });
+        wsBroadcaster.broadcast('door:command_received', { command: 'CLOSE' });
+        wsBroadcaster.broadcast('system:alert', {
+          severity: 'info', text, category: 'MANUAL_OVERRIDE', isPinned: false,
+        });
+
+        res.status(201).json({ ok: true, type, action: 'CLOSE' });
+        return;
+      }
+
+      const until = new Date(Date.now() + MANUAL_OVERRIDE_DURATION_MS);
+      await db.update(settings)
+        .set({ pendingCommand: 'OPEN', manualOverrideUntil: until })
+        .where(eq(settings.id, 1));
+
+      const text = 'Manual override via physical button — door opening for 15 minutes.';
+      await db.insert(statusMessages).values({
+        id: `manual-override-${Date.now()}`,
+        text,
+        timestamp: new Date().toISOString(),
+        isWarning: true,
+        category: 'MANUAL_OVERRIDE',
+      });
+      wsBroadcaster.broadcast('door:command_received', { command: 'OPEN' });
+      wsBroadcaster.broadcast('system:alert', {
+        severity: 'warning', text, category: 'MANUAL_OVERRIDE', isPinned: false,
+      });
+
+      res.status(201).json({ ok: true, type, action: 'OPEN', manualOverrideUntil: until.toISOString() });
+      return;
+    }
+
+    // type === 'service' — toggle both serviceMode and door.
+    const [cfg] = await db.select({ serviceMode: settings.serviceMode })
+      .from(settings).where(eq(settings.id, 1));
+    const nextServiceMode = !(cfg?.serviceMode ?? false);
+    const nextCmd: 'OPEN' | 'CLOSE' = doorOpenish ? 'CLOSE' : 'OPEN';
+
+    await db.update(settings)
+      .set({
+        serviceMode: nextServiceMode,
+        pendingCommand: nextCmd,
+        manualOverrideUntil: null,
+      })
+      .where(eq(settings.id, 1));
+
+    const text = nextServiceMode
+      ? `Service mode enabled via physical button — automation paused, door ${nextCmd === 'OPEN' ? 'opening' : 'closing'}.`
+      : `Service mode disabled via physical button — automation resumed, door ${nextCmd === 'OPEN' ? 'opening' : 'closing'}.`;
+    await db.insert(statusMessages).values({
+      id: `service-mode-${Date.now()}`,
+      text,
+      timestamp: new Date().toISOString(),
+      isWarning: nextServiceMode,
+      isPinned: nextServiceMode,
+      category: 'SERVICE_MODE',
+    });
+    wsBroadcaster.broadcast('door:command_received', { command: nextCmd });
+    wsBroadcaster.broadcast('system:alert', {
+      severity: nextServiceMode ? 'warning' : 'info',
+      text,
+      category: 'SERVICE_MODE',
+      isPinned: nextServiceMode,
+    });
+
+    res.status(201).json({ ok: true, type, serviceMode: nextServiceMode, action: nextCmd });
   } catch (err) {
     next(err);
   }

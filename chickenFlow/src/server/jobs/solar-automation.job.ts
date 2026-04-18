@@ -15,6 +15,28 @@ export async function solarAutomationJob(): Promise<void> {
   if (cfg.serviceMode) return;
   if (cfg.pendingCommand && cfg.pendingCommand !== 'NONE') return;
 
+  // Manual-override window: the button-triggered 15 min open bypasses solar.
+  // When the window just lapsed, this job is responsible for clearing the
+  // flag and queuing CLOSE so the coop returns to automatic rule.
+  if (cfg.manualOverrideUntil) {
+    const overrideMs = cfg.manualOverrideUntil.getTime();
+    if (overrideMs > Date.now()) return;
+
+    await db.update(settings)
+      .set({ manualOverrideUntil: null, pendingCommand: 'CLOSE' })
+      .where(eq(settings.id, 1));
+
+    wsBroadcaster.broadcast('door:command_received', { command: 'CLOSE' });
+    wsBroadcaster.broadcast('system:alert', {
+      severity: 'info',
+      text: 'Manual override expired — door CLOSE queued, automation resumed.',
+      category: 'MANUAL_OVERRIDE',
+      isPinned: false,
+    });
+    console.log('[Job:solar-automation] Manual override expired — queued CLOSE');
+    return;
+  }
+
   const todayStr = new Date().toISOString().split('T')[0];
   const [today] = await db.select().from(weatherCache)
     .where(sql`${weatherCache.forecastDate} = ${todayStr}`);

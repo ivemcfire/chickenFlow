@@ -130,3 +130,24 @@ void buzzTone(uint32_t freqHz, uint32_t durationMs) {
   delay(durationMs);
   stopTone();
 }
+
+// 5 s threshold crossed — one short high chirp.
+void playOverrideConfirm() {
+  buzzTone(2500, 80);
+}
+
+// 10 s threshold crossed — two short high chirps (distinct from the
+// single-chirp override tone).
+void playServiceConfirm() {
+  buzzTone(2500, 80);
+  delay(80);
+  buzzTone(2500, 80);
+}
+
+// Periodic reminder uses a lower pitch so it can't be mistaken for the
+// service-mode-entry confirmation.
+void playServiceReminder() {
+  buzzTone(1800, 60);
+  delay(80);
+  buzzTone(1800, 60);
+}

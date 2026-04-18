@@ -64,6 +64,25 @@ unsigned long lastSensorPostMs  = 0;
 unsigned long lastCapturePostMs = 0;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Manual button + service mode
+// ─────────────────────────────────────────────────────────────────────────────
+// Button (INPUT_PULLUP): reads LOW while pressed, HIGH while released.
+// Duration-measured press — we commit the action on release so the user can
+// hold past a threshold and release at the desired one.
+bool          buttonStablePressed = false;        // debounced state
+bool          buttonRawLast       = HIGH;         // last raw read
+unsigned long buttonLastChangeMs  = 0;            // last edge timestamp (debounce window)
+unsigned long buttonPressStartMs  = 0;            // when the press began
+bool          buttonChirped5s     = false;        // haptic tick at 5 s crossed
+bool          buttonChirped10s    = false;        // haptic tick at 10 s crossed
+
+// Local mirror of backend serviceMode. Sync is READ-ONLY from the poll
+// response; only `/api/esp32/manual-button` mutates backend state. This
+// separation prevents poll→POST loops and is crash-resilient.
+bool          backendServiceMode     = false;
+unsigned long lastServiceReminderMs  = 0;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Status LED — 3-phase indicator on built-in LED (GPIO 15)
 //   CONNECTING:      rapid blink while WiFi is associating
 //   CONNECTED_PAUSE: solid ON for 3 s after WiFi connects (visual confirmation)
@@ -103,6 +122,10 @@ void     playDoorOpen();
 void     playDoorClose();
 void     playObstruction();
 void     playError();
+void     tickButton();
+void     postManualButton(const char* type);
+void     syncServiceMode(bool on);
+void     tickServiceReminder();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Setup
@@ -128,9 +151,12 @@ void setup() {
   pinMode(PIN_LED_STATUS, OUTPUT);
   digitalWrite(PIN_LED_STATUS, LOW);
 
-  // Coop light / spare output: keep off by default.
+  // Coop light / service-mode indicator LED: off until backend reports serviceMode.
   pinMode(PIN_COOP_LIGHT, OUTPUT);
   digitalWrite(PIN_COOP_LIGHT, LOW);
+
+  // Manual override button: INPUT_PULLUP, wired to GND.
+  pinMode(PIN_MANUAL_BUTTON, INPUT_PULLUP);
 
   // Passive buzzer: configure LEDC but output 0 Hz (silent).
   // Boot ROM already sent noise on this pin; stay silent until WiFi connects.
@@ -222,6 +248,12 @@ void loop() {
   // Tick the non-blocking door motor state machine
   tickDoorMotor();
 
+  // Manual override button — local press detection.
+  tickButton();
+
+  // Periodic chirp while in service mode (driven by backend sync, not local state).
+  tickServiceReminder();
+
   // Poll backend for commands
   if (now - lastCommandPollMs >= COMMAND_POLL_MS) {
     lastCommandPollMs = now;
@@ -263,7 +295,15 @@ void pollCommand() {
   }
 
   const char* action = doc["action"] | "NONE";
-  DBGF("[Command] action=%s\n", action);
+  // serviceMode is authoritative from backend; default to current local mirror
+  // so a missing field during a partial-response edge case leaves us unchanged.
+  bool svc = doc["serviceMode"] | backendServiceMode;
+  DBGF("[Command] action=%s serviceMode=%d\n", action, svc);
+
+  // READ-ONLY sync: only updates the local LED + reminder timer. Never POSTs.
+  // The only path that mutates backend service-mode state is the button press
+  // handler, which keeps this poll strictly one-way.
+  syncServiceMode(svc);
 
   if (strcmp(action, "OPEN") == 0 && doorState != DOOR_OPEN && motorPhase == MOTOR_IDLE) {
     startDoorMove("OPEN");
@@ -678,4 +718,108 @@ void playError() {
   buzzTone(NOTE_G4, 150); delay(40);
   buzzTone(NOTE_E4, 150); delay(40);
   buzzTone(NOTE_C4, 300);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manual override button
+// ─────────────────────────────────────────────────────────────────────────────
+// Debounced duration-measure press detector. Behavior:
+//   press ≥ 10 s  → POST type="service"  (before release, play service chirp)
+//   press ≥  5 s  → POST type="override" (before release, play override chirp)
+//   press <   5 s → ignored (prevents accidental bumps)
+// Cue chirps fire as the thresholds are crossed during the hold, so the user
+// knows when to release. The POST only happens on release, so the user can
+// keep holding past 5 s to reach the 10 s threshold.
+void tickButton() {
+  unsigned long now = millis();
+  bool raw = digitalRead(PIN_MANUAL_BUTTON);    // LOW = pressed
+
+  // Debounce: track raw edges, only commit after stable window elapses.
+  if (raw != buttonRawLast) {
+    buttonRawLast = raw;
+    buttonLastChangeMs = now;
+  }
+  if ((now - buttonLastChangeMs) < BUTTON_DEBOUNCE_MS) return;
+
+  bool pressed = (raw == LOW);
+
+  // ── Press edge ────────────────────────────────────────────────────────────
+  if (pressed && !buttonStablePressed) {
+    buttonStablePressed = true;
+    buttonPressStartMs  = now;
+    buttonChirped5s     = false;
+    buttonChirped10s    = false;
+    DBGLN("[Button] Press started");
+    return;
+  }
+
+  // ── While pressed: crossing-threshold feedback chirps ─────────────────────
+  if (pressed && buttonStablePressed) {
+    unsigned long held = now - buttonPressStartMs;
+    if (!buttonChirped5s && held >= BUTTON_PRESS_OVERRIDE_MS) {
+      buttonChirped5s = true;
+      playOverrideConfirm();
+      DBGLN("[Button] Crossed 5s threshold (override)");
+    }
+    if (!buttonChirped10s && held >= BUTTON_PRESS_SERVICE_MS) {
+      buttonChirped10s = true;
+      playServiceConfirm();
+      DBGLN("[Button] Crossed 10s threshold (service)");
+    }
+    return;
+  }
+
+  // ── Release edge ──────────────────────────────────────────────────────────
+  if (!pressed && buttonStablePressed) {
+    unsigned long held = now - buttonPressStartMs;
+    buttonStablePressed = false;
+    DBGF("[Button] Released after %lu ms\n", held);
+
+    if (held >= BUTTON_PRESS_SERVICE_MS) {
+      postManualButton("service");
+    } else if (held >= BUTTON_PRESS_OVERRIDE_MS) {
+      postManualButton("override");
+    }
+    // Short presses: ignored.
+  }
+}
+
+// Sole POST path for button-driven state mutations. Backend sets
+// pendingCommand=OPEN and flips either serviceMode or manualOverrideUntil.
+// Firmware does NOT update backendServiceMode here — the next /command poll
+// returns the new state and syncServiceMode() picks it up. This keeps local
+// mirror updates flowing through exactly one direction.
+void postManualButton(const char* type) {
+  ledFlicker();
+  JsonDocument doc;
+  doc["type"] = type;
+  String body;
+  serializeJson(doc, body);
+
+  HTTPClient http;
+  http.begin(SERVER_BASE "/api/esp32/manual-button");
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+
+  int code = http.POST(body);
+  DBGF("[Button] POST /manual-button type=%s  HTTP %d\n", type, code);
+  http.end();
+}
+
+// Local-mirror-only: update LED + reminder scheduler. Never POSTs.
+void syncServiceMode(bool on) {
+  if (on == backendServiceMode) return;
+  backendServiceMode = on;
+  digitalWrite(PIN_COOP_LIGHT, on ? HIGH : LOW);
+  lastServiceReminderMs = millis();   // reset the reminder clock on state change
+  DBGF("[ServiceMode] sync → %s\n", on ? "ON" : "OFF");
+}
+
+void tickServiceReminder() {
+  if (!backendServiceMode) return;
+  unsigned long now = millis();
+  if (now - lastServiceReminderMs >= SERVICE_MODE_REMINDER_MS) {
+    lastServiceReminderMs = now;
+    playServiceReminder();
+  }
 }
