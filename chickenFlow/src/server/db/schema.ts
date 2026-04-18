@@ -13,6 +13,9 @@ export const settings = pgTable('settings', {
   locationLon: doublePrecision('location_lon').notNull().default(-0.1278),
   // ESP32 command queue — read and reset to NONE on delivery
   pendingCommand: text('pending_command').notNull().default('NONE'),
+  // Manual override expiry. When > now(), automation jobs skip their tick;
+  // the solar job clears the field and queues CLOSE once it has lapsed.
+  manualOverrideUntil: timestamp('manual_override_until', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
