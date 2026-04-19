@@ -64,11 +64,17 @@ async function ollamaGenerate(opts: {
       // Qwen3 hybrid reasoning: disable chain-of-thought for this
       // short-form deterministic telemetry narration. Saves tokens + heat.
       think: false,
+      // Keep the model resident for longer than one cron interval (`3 * * * *`)
+      // so the hourly call finds a warm model instead of paying ~25s cold-load.
+      // Default Ollama keep_alive is 5m, which guarantees every hourly call is
+      // cold. 70m spans the gap with slack for clock skew.
+      keep_alive: '70m',
       options: { num_predict: opts.maxTokens },
     }),
-    // Hourly burst cron + 10min keep-alive means each call is effectively
-    // cold-start (measured ~25s for qwen3:4b to load on SD845). 60s with slack.
-    signal: AbortSignal.timeout(60_000),
+    // Cold-start on SD845: ~25s load + ~60s prompt_eval(300 tok) + ~40s
+    // generate(128 tok) ≈ 125s worst case. 180s = comfortable headroom.
+    // Subsequent warm calls finish in ~10s.
+    signal: AbortSignal.timeout(180_000),
   });
 
   if (!resp.ok) {
