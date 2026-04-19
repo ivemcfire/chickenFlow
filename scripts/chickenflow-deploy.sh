@@ -2,7 +2,7 @@
 # chickenflow — commit/push/deploy helper
 #
 # Usage:
-#   chickenflow push                      # commit + push production to GitHub (no deploy)
+#   chickenflow push                      # commit + push develop to GitHub (no deploy)
 #   chickenflow push "fix manual mode"    # …with custom commit message
 #   chickenflow deploy                    # commit + push + build + image push + rollout + health
 #   chickenflow deploy "fix manual mode"  # …with custom commit message
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO="/home/user/chickenFlow"
-BRANCH="production"
+BRANCH="develop"
 NAMESPACE="chickenflow"
 IMAGE="ghcr.io/ivemcfire/chickenflow"
 

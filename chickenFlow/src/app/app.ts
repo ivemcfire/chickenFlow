@@ -104,6 +104,8 @@ export class App implements OnInit, OnDestroy {
   showInfo = signal<boolean>(false);
   showResetInfo = signal<boolean>(false);
   showDisableInfo = signal<boolean>(false);
+  showFullLog = signal<boolean>(false);
+  showAbout = signal<boolean>(false);
   camError = signal<boolean>(false);
 
   // Timestamp-busted URL polled every 2 s for near-live view
@@ -169,6 +171,14 @@ export class App implements OnInit, OnDestroy {
 
   toggleDisableInfo() {
     this.showDisableInfo.update((v: boolean) => !v);
+  }
+
+  toggleFullLog() {
+    this.showFullLog.update((v: boolean) => !v);
+  }
+
+  toggleAbout() {
+    this.showAbout.update((v: boolean) => !v);
   }
 
   onTotalChickensChange(event: Event) {
