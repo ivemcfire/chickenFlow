@@ -1,6 +1,6 @@
 {
-  "id": "91a10638-5ddd-4735-9765-c32b39928df6",
-  "prevId": "904635cf-ab4a-4faf-bdcf-dc2be4fc3f99",
+  "id": "904635cf-ab4a-4faf-bdcf-dc2be4fc3f99",
+  "prevId": "b68ce06d-b40f-4d23-84d0-29d79ba0ca9e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -32,6 +32,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "has_image": {
+          "name": "has_image",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "door_state": {
           "name": "door_state",
@@ -101,6 +108,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "anomaly_detected": {
+          "name": "anomaly_detected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "threat_type": {
+          "name": "threat_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "count_confirmed": {
           "name": "count_confirmed",
@@ -198,6 +217,25 @@
           "primaryKey": false,
           "notNull": false
         },
+        "is_anomaly": {
+          "name": "is_anomaly",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "threat_type": {
+          "name": "threat_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_analysis_id": {
+          "name": "ai_analysis_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -221,55 +259,23 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "camera_captures_is_anomaly_idx": {
+          "name": "camera_captures_is_anomaly_idx",
+          "columns": [
+            {
+              "expression": "is_anomaly",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.chicken_counts": {
-      "name": "chicken_counts",
-      "schema": "",
-      "columns": {
-        "date": {
-          "name": "date",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "total_in": {
-          "name": "total_in",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "total_out": {
-          "name": "total_out",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "net_inside": {
-          "name": "net_inside",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -754,6 +760,53 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chicken_counts": {
+      "name": "chicken_counts",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "total_in": {
+          "name": "total_in",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "total_out": {
+          "name": "total_out",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "net_inside": {
+          "name": "net_inside",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
