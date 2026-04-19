@@ -18,29 +18,23 @@ type DiagFields = Partial<{
 }>;
 
 export async function noteEsp32Contact(fields?: DiagFields): Promise<void> {
+  const now = new Date();
+  // Only forward diag fields actually provided. HTTP polls (no fields)
+  // must not clobber the rssi/voltage/etc. snapshot from the last MQTT
+  // telemetry message — those are sampled every 60s, polls fire ~constantly.
+  const diag = {
+    ...(fields?.rssi !== undefined && { rssi: fields.rssi }),
+    ...(fields?.voltageV !== undefined && { voltageV: fields.voltageV }),
+    ...(fields?.currentMa !== undefined && { currentMa: fields.currentMa }),
+    ...(fields?.tempC !== undefined && { tempC: fields.tempC }),
+    ...(fields?.uptimeS !== undefined && { uptimeS: fields.uptimeS }),
+  };
   await db
     .insert(deviceStatus)
-    .values({
-      deviceId: DEVICE_ID,
-      lastSeen: new Date(),
-      rssi: fields?.rssi,
-      voltageV: fields?.voltageV,
-      currentMa: fields?.currentMa,
-      tempC: fields?.tempC,
-      uptimeS: fields?.uptimeS,
-      updatedAt: new Date(),
-    })
+    .values({ deviceId: DEVICE_ID, lastSeen: now, updatedAt: now, ...diag })
     .onConflictDoUpdate({
       target: deviceStatus.deviceId,
-      set: {
-        lastSeen: new Date(),
-        rssi: fields?.rssi,
-        voltageV: fields?.voltageV,
-        currentMa: fields?.currentMa,
-        tempC: fields?.tempC,
-        uptimeS: fields?.uptimeS,
-        updatedAt: new Date(),
-      },
+      set: { lastSeen: now, updatedAt: now, ...diag },
     });
 }
 
