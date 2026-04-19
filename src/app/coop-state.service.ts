@@ -51,8 +51,12 @@ export class CoopStateService {
   sunrise = signal<string>('06:00');
   sunset = signal<string>('18:00');
   distance = signal<number>(45); // Ultrasonic for obstruction
-  irTriggered = signal<boolean>(false); // IR for counting
+  ir1 = signal<boolean>(false); // IR 1 (Interior)
+  ir2 = signal<boolean>(false); // IR 2 (Exterior)
+  private crossingSequence: ('ir1' | 'ir2')[] = [];
   systemOnline = signal<boolean>(true);
+  ldrOnline = signal<boolean>(true);
+  cameraOnline = signal<boolean>(true);
   statusMessages = signal<StatusMessage[]>([]);
   isAnalyzing = signal<boolean>(false);
   herdingMode = signal<boolean>(false);
@@ -442,10 +446,10 @@ export class CoopStateService {
     const initialChickens: Chicken[] = [];
     const count = this.totalChickens();
     for (let i = 0; i < count; i++) {
-      // Start with 2 inside, 8 outside if total is 10 (20% inside)
+      // Start with 20% inside
       const isInside = i < (count * 0.2);
-      const x = isInside ? Math.random() * 100 + 40 : Math.random() * 120 + 220;
-      const y = Math.random() * 140 + 50;
+      const x = isInside ? Math.random() * 90 + 20 : Math.random() * 100 + 150;
+      const y = Math.random() * 100 + 65;
       initialChickens.push({
         id: i,
         x,
@@ -475,14 +479,14 @@ export class CoopStateService {
     if (this.serviceMode()) return;
     
     const currentState = this.doorState();
-    const CHICKEN_RADIUS = 10; 
-    const FRAME_X_LEFT = 166;
-    const FRAME_X_RIGHT = 178;
-    const BUFFER = 14; // Radius (10) + margin (4)
+    const CHICKEN_RADIUS = 16; 
+    const FRAME_X_LEFT = 158; // Center: 168 (New Wall Left) + 5 - 15 buffer? No, let's keep relative.
+    const FRAME_X_RIGHT = 188; // 168 + 10 (wall) + 10 (buffer)
+    const BUFFER = 24; // Radius (20) + margin (4)
     const SAFE_X_MIN = FRAME_X_LEFT - BUFFER;
     const SAFE_X_MAX = FRAME_X_RIGHT + BUFFER;
-    const DOOR_Y_MIN = 80;
-    const DOOR_Y_MAX = 160;
+    const DOOR_Y_MIN = 60;
+    const DOOR_Y_MAX = 130;
 
     this.chickens.update(prev => {
       const next = prev.map(c => ({ ...c }));
@@ -498,55 +502,76 @@ export class CoopStateService {
         // 2. Set Target Position based on side
         if (Math.random() < 0.02) { // Only pick new target occasionally
           if (currentState === DoorState.CLOSED || currentState === DoorState.ERROR) {
-            if (c.x < 172) {
-              c.targetX = Math.max(30, Math.min(SAFE_X_MIN - 5, c.targetX + (Math.random() - 0.5) * 80));
+            if (c.x < 168) {
+              c.targetX = Math.max(15, Math.min(SAFE_X_MIN - 5, c.targetX + (Math.random() - 0.5) * 75));
             } else {
-              c.targetX = Math.max(SAFE_X_MAX + 5, Math.min(370, c.targetX + (Math.random() - 0.5) * 80));
+              c.targetX = Math.max(SAFE_X_MAX + 5, Math.min(380, c.targetX + (Math.random() - 0.5) * 75));
             }
           } else {
-            // Door open, targets can be anywhere but we'll bias them away from the frame
-            c.targetX = Math.max(30, Math.min(370, c.targetX + (Math.random() - 0.5) * 100));
-            // If target is in the frame X range, push it towards the opening or out
+            // Door open, targets can be anywhere
+            c.targetX = Math.max(15, Math.min(380, c.targetX + (Math.random() - 0.5) * 100));
+            // If target is in the frame X range, push it towards the opening
             if (c.targetX > SAFE_X_MIN && c.targetX < SAFE_X_MAX) {
-               if (Math.random() < 0.6) { // 60% chance to push out of frame
-                 c.targetX = (c.x < 172) ? SAFE_X_MIN - 10 : SAFE_X_MAX + 10;
-               } else { // 40% chance to aim for the center of the door
-                 c.targetY = 120; 
+               if (Math.random() < 0.5) { 
+                 c.targetX = (c.x < 168) ? SAFE_X_MIN - 10 : SAFE_X_MAX + 10;
+               } else { 
+                 c.targetY = 90; 
                }
             }
           }
-          c.targetY = Math.max(45, Math.min(205, c.targetY + (Math.random() - 0.5) * 100));
+          c.targetY = Math.max(25, Math.min(165, c.targetY + (Math.random() - 0.5) * 100));
         }
 
         // 3. Move towards target
         let moveX = (c.targetX - c.x) * 0.05;
         let moveY = (c.targetY - c.y) * 0.05;
 
-        const nextX = c.x + moveX;
-        const nextY = c.y + moveY;
+        let nextX = c.x + moveX;
+        let nextY = c.y + moveY;
 
         // Strict Boundary Check
         const inFrameX = nextX > SAFE_X_MIN && nextX < SAFE_X_MAX;
-        const inOpeningY = nextY > DOOR_Y_MIN + 12 && nextY < DOOR_Y_MAX - 12;
+        const inOpeningY = nextY > DOOR_Y_MIN + 5 && nextY < DOOR_Y_MAX - 5;
 
         if (inFrameX) {
           if (currentState !== DoorState.OPEN || !inOpeningY) {
             // Blocked!
             moveX = 0;
-            // If they are already "inside" the forbidden zone (e.g. from collision push), push them out
+            // If they are already "inside" the forbidden zone, push them out
             if (c.x > SAFE_X_MIN && c.x < SAFE_X_MAX) {
-               moveX = (c.x < 172) ? -1.5 : 1.5;
+               moveX = (c.x < 168) ? -2 : 2;
             }
             
             if (currentState === DoorState.OPEN) {
-              // Guide towards center
-              moveY = (nextY < 120) ? 1.5 : -1.5;
+              moveY = (nextY < 90) ? 2 : -2;
             }
           }
         }
 
-        c.x += moveX;
-        c.y += moveY;
+        nextX = c.x + moveX;
+        nextY = c.y + moveY;
+
+        // Dual IR Crossing Simulation
+        if (nextX > 162 && nextX < 174 && inOpeningY && currentState === DoorState.OPEN) {
+           const direction = nextX > c.x ? 'entering' : 'exiting';
+           if (direction === 'entering' && c.x <= 162 && nextX > 162) {
+              this.handleIRTrigger('ir2');
+              setTimeout(() => this.handleIRTrigger('ir1'), 150);
+           } else if (direction === 'exiting' && c.x >= 174 && nextX < 174) {
+              this.handleIRTrigger('ir1');
+              setTimeout(() => this.handleIRTrigger('ir2'), 150);
+           }
+        }
+
+        // 6. Horizontal boundaries
+        if (nextX < 15) nextX = 15;
+        if (nextX > 375) nextX = 375;
+        // Vertical boundaries
+        if (nextY < 12) nextY = 12;
+        if (nextY > 145) nextY = 145;
+
+        c.x = nextX;
+        c.y = nextY;
 
         // 4. Realistic Bouncing (Collision)
         for (let j = 0; j < next.length; j++) {
@@ -573,7 +598,7 @@ export class CoopStateService {
       const now = Date.now();
       const manualCooldown = 30000; // 30 seconds cooldown after manual action
       if (currentState === DoorState.OPEN && (now - this.lastManualAction > manualCooldown)) {
-        const insideCount = next.filter(c => c.x < 176).length;
+        const insideCount = next.filter(c => c.x < 168).length;
         if (insideCount === next.length) {
           // All chickens are in!
           this.setDoorState(DoorState.CLOSED, false);
@@ -624,6 +649,32 @@ export class CoopStateService {
     this.runAIAnalysis();
   }
 
+  private handleIRTrigger(sensor: 'ir1' | 'ir2') {
+    if (sensor === 'ir1') {
+      this.ir1.set(true);
+      setTimeout(() => this.ir1.set(false), 500);
+    } else {
+      this.ir2.set(true);
+      setTimeout(() => this.ir2.set(false), 500);
+    }
+
+    this.crossingSequence.push(sensor);
+    if (this.crossingSequence.length > 2) this.crossingSequence.shift();
+
+    if (this.crossingSequence.length === 2) {
+      const [first, second] = this.crossingSequence;
+      if (first === 'ir2' && second === 'ir1') {
+        // Entering (Yard to Coop)
+        this.addStatusMessage("DUAL IR: Chicken entered coop.", false, false);
+        this.crossingSequence = [];
+      } else if (first === 'ir1' && second === 'ir2') {
+        // Exiting (Coop to Yard)
+        this.addStatusMessage("DUAL IR: Chicken exited coop.", false, false);
+        this.crossingSequence = [];
+      }
+    }
+  }
+
   toggleManualOpen() {
     const target = !this.manualOpenOverride();
     this.manualOpenOverride.set(target);
@@ -658,16 +709,17 @@ export class CoopStateService {
     // Simulate sensor check delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Check for obstruction (Simulated: 30% chance of obstruction if not already in error)
-    // Or we can use the actual distance signal if we want to make it interactive
-    const isObstructed = this.distance() < 20 || (Math.random() < 0.3 && this.closeAttempts < 3);
+    // Check for obstruction (Ultrasonic Safety)
+    const distanceThreshold = 25; // 25cm for safety
+    const isObstructed = this.distance() < distanceThreshold || (Math.random() < 0.2 && this.closeAttempts < 3);
 
     if (isObstructed) {
       this.closeAttempts++;
-      this.distance.set(15); // Show obstruction in UI
-      this.addStatusMessage(`Obstruction detected! Re-opening door (Attempt ${this.closeAttempts}/3).`, true, false);
+      this.distance.set(12); // Logic: distance dips during obstruction
+      this.addStatusMessage(`SAFETY ALERT: Obstruction detected at ${this.distance()}cm! Re-opening door.`, true, false);
       
       this.doorState.set(DoorState.OPENING);
+      await this.runAIAnalysis("Immediate obstruction detected during closing. Door safety triggered.");
       await new Promise(resolve => setTimeout(resolve, 2000));
       this.doorState.set(DoorState.OPEN);
       this.distance.set(45); // Clear obstruction for next attempt
@@ -693,15 +745,14 @@ export class CoopStateService {
     this.chickens.update(prev => prev.map(c => ({
       ...c,
       isInside: true,
-      x: Math.random() * 100 + 40, // Move to coop area
-      y: Math.random() * 140 + 50,
-      targetX: Math.random() * 100 + 40,
-      targetY: Math.random() * 140 + 50
+      x: Math.random() * 90 + 20, // Move to coop area
+      y: Math.random() * 100 + 65,
+      targetX: Math.random() * 90 + 20,
+      targetY: Math.random() * 100 + 65
     })));
     this.doorState.set(DoorState.CLOSED);
     this.lastManualAction = Date.now();
     this.distance.set(45);
-    this.irTriggered.set(false);
     this.addStatusMessage("Manual chicken return triggered. All chickens secured.", false, false);
     
     // Reset returning state after animation
@@ -716,26 +767,33 @@ export class CoopStateService {
     this.warningCount.set(0);
     this.errorCount.set(0);
     try {
-      const insideCount = this.chickens().filter(c => c.x < 176).length;
+      const insideCount = this.chickens().filter(c => c.x < 128).length;
       const total = this.totalChickens();
       const weather = this.weatherForecast()[0];
-      const prompt = `You are an AI Chicken Coop Manager. 
-      Current Status:
-      - Time: ${this.currentTime()}
-      - Door: ${this.doorState()}
-      - Chickens Inside: ${insideCount}/${total}
-      - Weather: ${weather ? `${weather.temp}°C, code ${weather.code}` : 'Unknown'}
-      - Weather Lockdown: ${this.weatherLock() ? 'ACTIVE' : 'Inactive'}
-      - Service Mode: ${this.serviceMode() ? 'ACTIVE' : 'Inactive'}
-      - Obstruction Distance: ${this.distance()}cm
-      - Context: ${context}
+      const distance = this.distance();
       
-      Provide a very brief, professional, and slightly witty status update (max 20 words). 
-      If weather is bad (code > 60) or lockdown is active, mention safety measures.`;
+      const prompt = `You are an AI Chicken Coop Manager with Dual IR Tracking and Ultrasonic Safety systems.
+      
+      System Data:
+      - Current Time: ${this.currentTime()}
+      - Door State: ${this.doorState()}
+      - Occupancy: ${insideCount}/${total} chickens inside
+      - Ultrasonic Path: ${distance}cm clear
+      - Weather: ${weather ? `${weather.temp}°C, code ${weather.code}` : 'Unknown'}
+      - Lockdown: ${this.weatherLock() ? 'ACTIVE' : 'Inactive'}
+      - Service Mode: ${this.serviceMode() ? 'ACTIVE' : 'Inactive'}
+      - Context: ${context}
+
+      Analysis Objectives:
+      1. Safety: If distance < 25cm during door movement, flag as CRITICAL OBSTRUCTION.
+      2. Security: At evening/night, identify if chickens are left outside.
+      3. Logic Check: Report on Dual IR count consistency vs visual occupancy.
+
+      Provide a concise status report with action recommendations. Max 40 words. Use markdown icons.`;
 
       const response = await this.ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: prompt
       });
 
       const analysisText = response.text || "Analysis complete.";

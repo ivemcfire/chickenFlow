@@ -26,8 +26,13 @@ export class App {
   startTime = this.coopService.startTime;
   distance = this.coopService.distance;
   systemOnline = this.coopService.systemOnline;
+  ldrOnline = this.coopService.ldrOnline;
+  cameraOnline = this.coopService.cameraOnline;
+  ir1 = this.coopService.ir1;
+  ir2 = this.coopService.ir2;
   totalChickens = this.coopService.totalChickens;
   statusMessages = computed(() => this.coopService.getDisplayMessages());
+  recentMessages = computed(() => this.statusMessages().slice(0, 3));
   isAnalyzing = this.coopService.isAnalyzing;
 
   musicDuration = this.coopService.musicDuration;
@@ -43,10 +48,20 @@ export class App {
   showInfo = signal<boolean>(false);
   showResetInfo = signal<boolean>(false);
   showDisableInfo = signal<boolean>(false);
+  showFullLog = signal<boolean>(false);
+  showAbout = signal<boolean>(false);
 
   insideCount = computed(() => {
-    return this.chickens().filter(c => c.x < 176).length; // Coop area boundary (DOOR_X)
+    return this.chickens().filter(c => c.x < 168).length; // Updated boundary for wider interior
   });
+
+  toggleFullLog() {
+    this.showFullLog.update(v => !v);
+  }
+
+  toggleAbout() {
+    this.showAbout.update(v => !v);
+  }
 
   setDoorState(state: DoorState) {
     this.coopService.setDoorState(state);
@@ -100,5 +115,9 @@ export class App {
 
   refreshAI() {
     this.coopService.runAIAnalysis("Manual refresh requested.");
+  }
+
+  toggleCamera() {
+    this.coopService.cameraOnline.update(v => !v);
   }
 }
