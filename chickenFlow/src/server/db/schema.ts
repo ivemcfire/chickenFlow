@@ -92,7 +92,7 @@ export const weatherCache = pgTable('weather_cache', {
 // Full audit trail of every AI API call — success or failure.
 export const aiAnalysisLog = pgTable('ai_analysis_log', {
   id: serial('id').primaryKey(),
-  model: text('model').notNull().default('gemini-2.5-flash-lite'),
+  model: text('model').notNull(),
   promptTokens: integer('prompt_tokens'),
   completionTokens: integer('completion_tokens'),
   // Telemetry snapshot

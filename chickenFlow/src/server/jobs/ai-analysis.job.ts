@@ -3,6 +3,7 @@ import { sensorReadings, settings, weatherCache, statusMessages } from '../db/sc
 import { eq, desc, sql } from 'drizzle-orm';
 import { analyzeCoopTelemetry } from '../services/ollama.service.js';
 import { randomUUID } from 'node:crypto';
+import { localDate } from '../util/local-date.js';
 
 export async function aiAnalysisJob(): Promise<void> {
   console.log('[Job:ai-analysis] Running');
@@ -13,7 +14,7 @@ export async function aiAnalysisJob(): Promise<void> {
 
     const [cfg] = await db.select().from(settings).where(eq(settings.id, 1));
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDate();
     const [todayWeather] = await db.select().from(weatherCache)
       .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 

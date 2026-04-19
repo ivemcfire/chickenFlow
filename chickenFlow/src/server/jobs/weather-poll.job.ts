@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { settings, weatherCache, doorEvents } from '../db/schema.js';
 import { eq, desc, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
+import { localDate } from '../util/local-date.js';
 
 export async function weatherPollJob(): Promise<void> {
   console.log('[Job:weather-poll] Running');
@@ -10,7 +11,7 @@ export async function weatherPollJob(): Promise<void> {
     await fetchAndCacheWeather();
 
     // Check if today is severe and door is currently open → queue close
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDate();
     const [today] = await db.select().from(weatherCache)
       .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 
@@ -37,7 +38,7 @@ export async function weatherPollJob(): Promise<void> {
         .orderBy(desc(doorEvents.createdAt))
         .limit(1);
 
-      if (latestDoor?.toState === 'OPEN') {
+      if (latestDoor?.toState === 'OPEN' || latestDoor?.toState === 'OPENING') {
         await db.update(settings)
           .set({ pendingCommand: 'CLOSE' })
           .where(eq(settings.id, 1));

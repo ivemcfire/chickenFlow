@@ -12,6 +12,7 @@ import {
   markEsp32Online,
   noteEsp32Contact,
 } from '../jobs/esp32-heartbeat.job.js';
+import { localDate } from '../util/local-date.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChickenFlow MQTT bridge
@@ -21,7 +22,6 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MQTT_URL = process.env['MQTT_URL'] ?? 'mqtt://mosquitto.hydroflow.svc.cluster.local:1883';
-const COOP_TZ = process.env['COOP_TZ'] ?? 'Europe/Sofia';
 
 const T_TELEMETRY = 'coop/telemetry';
 const T_COUNT = 'coop/count';
@@ -30,11 +30,6 @@ const T_DOOR_CMD = 'coop/door/cmd';
 const T_CONFIG = 'coop/config';
 
 let client: MqttClient | null = null;
-
-// 'en-CA' emits exactly YYYY-MM-DD; no parsing or padding required.
-function localDate(instant: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: COOP_TZ }).format(instant);
-}
 
 export function startMqttBridge(): void {
   if (client) return;

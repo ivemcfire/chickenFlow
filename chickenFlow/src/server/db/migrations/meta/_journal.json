@@ -36,6 +36,13 @@
       "when": 1776700800000,
       "tag": "0004_manual_override",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776576372935,
+      "tag": "0005_cultured_puppet_master",
+      "breakpoints": true
     }
   ]
 }

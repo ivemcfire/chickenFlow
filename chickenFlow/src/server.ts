@@ -16,6 +16,8 @@ import { startMqttBridge } from './server/services/mqtt-bridge.service.js';
 import { runMigrations } from './server/db/migrate.js';
 import { requestLogger } from './server/middleware/request-logger.js';
 import { errorHandler } from './server/middleware/error-handler.js';
+import { db } from './server/db/index.js';
+import { settings } from './server/db/schema.js';
 
 const serverDistFolder = dirname(fileURLToPath(import.meta.url));
 const browserDistFolder = join(serverDistFolder, '../browser');
@@ -62,6 +64,10 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
 
   // Run DB migrations before accepting traffic
   await runMigrations();
+
+  // Ensure the single-row settings record exists
+  await db.insert(settings).values({ id: 1 }).onConflictDoNothing();
+  console.log('[startup] Settings row ensured');
 
   // Wrap Express in http.Server so WebSocket can share the port
   const httpServer = createServer(app);

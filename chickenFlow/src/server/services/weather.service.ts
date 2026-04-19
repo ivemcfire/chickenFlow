@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { settings, weatherCache } from '../db/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
+import { localDate } from '../util/local-date.js';
 
 // WMO weather codes that trigger severe weather lock
 const SEVERE_CODES = new Set([65, 71, 73, 75, 77, 82, 85, 86, 95, 96, 99]);
@@ -57,7 +58,7 @@ export async function fetchAndCacheWeather(): Promise<void> {
       });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDate();
   const today = rows.find((r) => r.forecastDate === todayStr);
 
   console.log(`[Weather] Cached ${rows.length} forecast days. Today: code=${today?.weatherCode}, severe=${today?.isSevere}`);

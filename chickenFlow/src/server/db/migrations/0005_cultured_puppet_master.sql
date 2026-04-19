@@ -1,0 +1,1 @@
+ALTER TABLE "ai_analysis_log" ALTER COLUMN "model" DROP DEFAULT;

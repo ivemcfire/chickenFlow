@@ -3,6 +3,7 @@ import { settings, weatherCache, doorEvents } from '../db/schema.js';
 import { desc, eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { publishDoorCommand } from '../services/mqtt-bridge.service.js';
+import { localDate } from '../util/local-date.js';
 
 // Decides whether the door should currently be OPEN (day) or CLOSED (night)
 // based on today's sunrise/sunset, then queues a command for the ESP32 if the
@@ -37,7 +38,7 @@ export async function solarAutomationJob(): Promise<void> {
     return;
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDate();
   const [today] = await db.select().from(weatherCache)
     .where(sql`${weatherCache.forecastDate} = ${todayStr}`);
 
