@@ -5,3 +5,4 @@ chickenFlow/chickenflow.db
 chickenFlow/chickenflow.db.probe
 chickenFlow/data/
 chickenFlow/.env
+backups/
