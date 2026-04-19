@@ -15,6 +15,7 @@ type DiagFields = Partial<{
   currentMa: number;
   tempC: number;
   uptimeS: number;
+  lightLevel: number;
 }>;
 
 export async function noteEsp32Contact(fields?: DiagFields): Promise<void> {
@@ -28,6 +29,7 @@ export async function noteEsp32Contact(fields?: DiagFields): Promise<void> {
     ...(fields?.currentMa !== undefined && { currentMa: fields.currentMa }),
     ...(fields?.tempC !== undefined && { tempC: fields.tempC }),
     ...(fields?.uptimeS !== undefined && { uptimeS: fields.uptimeS }),
+    ...(fields?.lightLevel !== undefined && { lightLevel: fields.lightLevel }),
   };
   await db
     .insert(deviceStatus)

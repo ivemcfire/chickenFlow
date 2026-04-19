@@ -11,6 +11,7 @@ export const settings = pgTable('settings', {
   smartNightLight: boolean('smart_night_light').notNull().default(true),
   locationLat: doublePrecision('location_lat').notNull().default(51.5074),
   locationLon: doublePrecision('location_lon').notNull().default(-0.1278),
+  lightThreshold: integer('light_threshold').notNull().default(2000),
   // ESP32 command queue — read and reset to NONE on delivery
   pendingCommand: text('pending_command').notNull().default('NONE'),
   // Manual override expiry. When > now(), automation jobs skip their tick;
@@ -134,6 +135,7 @@ export const deviceStatus = pgTable('device_status', {
   currentMa: integer('current_ma'),
   tempC: doublePrecision('temp_c'),
   uptimeS: integer('uptime_s'),
+  lightLevel: integer('light_level'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

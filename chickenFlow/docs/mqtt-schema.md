@@ -24,11 +24,12 @@ Periodic health ping. Emitted every `MQTT_TELEMETRY_INTERVAL_MS` (60 s by defaul
 
 ```json
 {
-  "temp":     22.1,      // °C, from DS3231 ambient or motor housing probe
-  "ma":       148,       // INA219 rolling average, milliamps
-  "v":        12.1,      // INA219 bus voltage
-  "rssi":     -58,       // WiFi signal strength
-  "uptime_s": 1840
+  "temp":       22.1,    // °C, from DS3231 ambient or motor housing probe
+  "ma":         148,     // INA219 rolling average, milliamps
+  "v":          12.1,    // INA219 bus voltage
+  "rssi":       -58,     // WiFi signal strength
+  "uptime_s":   1840,
+  "lightLevel": 2400     // LDR raw ADC (0-4095), EMA-smoothed on-device
 }
 ```
 

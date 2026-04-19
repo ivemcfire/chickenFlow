@@ -93,6 +93,7 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
     currentMa: typeof p['ma'] === 'number' ? p['ma'] : undefined,
     tempC: typeof p['temp'] === 'number' ? p['temp'] : undefined,
     uptimeS: typeof p['uptime_s'] === 'number' ? p['uptime_s'] : undefined,
+    lightLevel: typeof p['lightLevel'] === 'number' ? p['lightLevel'] : undefined,
   };
   await markEsp32Online(fields);
 

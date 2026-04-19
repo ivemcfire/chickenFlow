@@ -1,9 +1,11 @@
 import { db } from '../db/index.js';
-import { settings, weatherCache, doorEvents } from '../db/schema.js';
+import { settings, weatherCache, doorEvents, deviceStatus } from '../db/schema.js';
 import { desc, eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { publishDoorCommand } from '../services/mqtt-bridge.service.js';
 import { localDate } from '../util/local-date.js';
+
+const FAILSAFE_MS = 90 * 60 * 1000;
 
 // Decides whether the door should currently be OPEN (day) or CLOSED (night)
 // based on today's sunrise/sunset, then queues a command for the ESP32 if the
@@ -56,10 +58,34 @@ export async function solarAutomationJob(): Promise<void> {
   const doorState = latest?.toState ?? 'CLOSED';
 
   let target: 'OPEN' | 'CLOSE' | null = null;
+  let devLightLevel: number | null | undefined;
 
   if (isDay) {
     if (today.isSevere) return; // weather-poll job handles severe close
-    if (doorState !== 'OPEN' && doorState !== 'OPENING') target = 'OPEN';
+    if (doorState !== 'OPEN' && doorState !== 'OPENING') {
+      const [dev] = await db.select({ lightLevel: deviceStatus.lightLevel })
+        .from(deviceStatus)
+        .where(eq(deviceStatus.deviceId, 'esp32-s2-coop'));
+      devLightLevel = dev?.lightLevel;
+
+      const msSinceSunrise = now - sunriseMs;
+      const lightOk = devLightLevel != null && devLightLevel >= (cfg.lightThreshold ?? 2000);
+      const failsafeTripped = msSinceSunrise >= FAILSAFE_MS;
+
+      if (lightOk || failsafeTripped) {
+        target = 'OPEN';
+        if (failsafeTripped && !lightOk) {
+          wsBroadcaster.broadcast('system:alert', {
+            severity: 'warning',
+            text: 'Light sensor below threshold 90 min past sunrise — opening anyway. LDR may be obstructed (dirt, snow, dropping). Inspect the sensor.',
+            category: 'LDR_FAILSAFE',
+            isPinned: true,
+          });
+        }
+      } else {
+        return; // wait for more light, next tick will re-check
+      }
+    }
   } else {
     if (doorState !== 'CLOSED' && doorState !== 'CLOSING') target = 'CLOSE';
   }
@@ -79,5 +105,9 @@ export async function solarAutomationJob(): Promise<void> {
     isPinned: false,
   });
 
-  console.log(`[Job:solar-automation] ${isDay ? 'day' : 'night'} mode, doorState=${doorState} → queued ${target}`);
+  if (isDay) {
+    console.log(`[Job:solar-automation] day mode, doorState=${doorState}, light=${devLightLevel ?? 'n/a'}/${cfg.lightThreshold} → queued ${target}`);
+  } else {
+    console.log(`[Job:solar-automation] night mode, doorState=${doorState} → queued ${target}`);
+  }
 }
