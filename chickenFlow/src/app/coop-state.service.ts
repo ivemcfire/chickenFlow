@@ -387,7 +387,7 @@ export class CoopStateService {
     if (state === DoorState.OPEN || state === DoorState.CLOSED) {
       const command = state === DoorState.OPEN ? 'OPEN' as const : 'CLOSE' as const;
       const trigger = isManual ? 'manual' : 'solar';
-      const insideCount = this.chickens().filter(c => c.x < 176).length;
+      const insideCount = this.chickens().filter(c => c.x < 168).length;
 
       // Optimistic UI update
       this.doorState.set(command === 'OPEN' ? DoorState.OPENING : DoorState.CLOSING);
@@ -486,14 +486,14 @@ export class CoopStateService {
     if (this.serviceMode()) return;
 
     const currentState = this.doorState();
-    const CHICKEN_RADIUS = 10;
-    const FRAME_X_LEFT = 166;
-    const FRAME_X_RIGHT = 178;
-    const BUFFER = 14;
+    const CHICKEN_RADIUS = 16;
+    const FRAME_X_LEFT = 158;
+    const FRAME_X_RIGHT = 188;
+    const BUFFER = 24;
     const SAFE_X_MIN = FRAME_X_LEFT - BUFFER;
     const SAFE_X_MAX = FRAME_X_RIGHT + BUFFER;
-    const DOOR_Y_MIN = 80;
-    const DOOR_Y_MAX = 160;
+    const DOOR_Y_MIN = 60;
+    const DOOR_Y_MAX = 130;
 
     this.chickens.update(prev => {
       const next = prev.map(c => ({ ...c }));
@@ -507,22 +507,22 @@ export class CoopStateService {
 
         if (Math.random() < 0.02) {
           if (currentState === DoorState.CLOSED || currentState === DoorState.ERROR) {
-            if (c.x < 172) {
-              c.targetX = Math.max(30, Math.min(SAFE_X_MIN - 5, c.targetX + (Math.random() - 0.5) * 80));
+            if (c.x < 168) {
+              c.targetX = Math.max(15, Math.min(SAFE_X_MIN - 5, c.targetX + (Math.random() - 0.5) * 75));
             } else {
-              c.targetX = Math.max(SAFE_X_MAX + 5, Math.min(370, c.targetX + (Math.random() - 0.5) * 80));
+              c.targetX = Math.max(SAFE_X_MAX + 5, Math.min(380, c.targetX + (Math.random() - 0.5) * 75));
             }
           } else {
-            c.targetX = Math.max(30, Math.min(370, c.targetX + (Math.random() - 0.5) * 100));
+            c.targetX = Math.max(15, Math.min(380, c.targetX + (Math.random() - 0.5) * 100));
             if (c.targetX > SAFE_X_MIN && c.targetX < SAFE_X_MAX) {
-              if (Math.random() < 0.6) {
-                c.targetX = (c.x < 172) ? SAFE_X_MIN - 10 : SAFE_X_MAX + 10;
+              if (Math.random() < 0.5) {
+                c.targetX = (c.x < 168) ? SAFE_X_MIN - 10 : SAFE_X_MAX + 10;
               } else {
-                c.targetY = 120;
+                c.targetY = 90;
               }
             }
           }
-          c.targetY = Math.max(45, Math.min(205, c.targetY + (Math.random() - 0.5) * 100));
+          c.targetY = Math.max(25, Math.min(165, c.targetY + (Math.random() - 0.5) * 100));
         }
 
         let moveX = (c.targetX - c.x) * 0.05;
@@ -530,16 +530,16 @@ export class CoopStateService {
         const nextX = c.x + moveX;
         const nextY = c.y + moveY;
         const inFrameX = nextX > SAFE_X_MIN && nextX < SAFE_X_MAX;
-        const inOpeningY = nextY > DOOR_Y_MIN + 12 && nextY < DOOR_Y_MAX - 12;
+        const inOpeningY = nextY > DOOR_Y_MIN + 5 && nextY < DOOR_Y_MAX - 5;
 
         if (inFrameX) {
           if (currentState !== DoorState.OPEN || !inOpeningY) {
             moveX = 0;
             if (c.x > SAFE_X_MIN && c.x < SAFE_X_MAX) {
-              moveX = (c.x < 172) ? -1.5 : 1.5;
+              moveX = (c.x < 168) ? -2 : 2;
             }
             if (currentState === DoorState.OPEN) {
-              moveY = (nextY < 120) ? 1.5 : -1.5;
+              moveY = (nextY < 90) ? 2 : -2;
             }
           }
         }
@@ -594,7 +594,7 @@ export class CoopStateService {
     if (this.serviceMode()) return;
     this.isAnalyzing.set(true);
 
-    const insideCount = this.chickens().filter(c => c.x < 176).length;
+    const insideCount = this.chickens().filter(c => c.x < 168).length;
     const total = this.totalChickens();
     const weather = this.weatherForecast()[0];
 

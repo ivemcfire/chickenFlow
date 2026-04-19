@@ -46,7 +46,7 @@
       </header>
 
       <!-- AI Status Report -->
-      <div class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[300px] flex flex-col">
+      <div class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[100px] flex flex-col group cursor-pointer" (click)="toggleFullLog()">
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-2">
             <mat-icon class="text-amber-500 text-sm">psychology</mat-icon>
@@ -66,18 +66,16 @@
               }
             </div>
           </div>
-          <div class="flex items-center gap-1">
-            <button (click)="toggleFullLog()" class="p-1 hover:bg-white/5 rounded-full transition-colors group" title="View full log">
-              <mat-icon class="text-stone-500 text-xs group-hover:text-amber-500">fullscreen</mat-icon>
-            </button>
-            <button (click)="refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group disabled:opacity-30 disabled:cursor-not-allowed">
-              <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover:text-amber-500">refresh</mat-icon>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">View Full Log</span>
+            <button (click)="$event.stopPropagation(); refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group/btn disabled:opacity-30 disabled:cursor-not-allowed">
+              <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover/btn:text-amber-500">refresh</mat-icon>
             </button>
           </div>
         </div>
 
-        <div class="flex-1 space-y-2 overflow-y-auto max-h-[240px] pr-2 custom-scrollbar">
-          @for (msg of statusMessages(); track msg.id) {
+        <div class="flex-1 space-y-2 overflow-hidden pr-2">
+          @for (msg of recentMessages(); track msg.id) {
             <div class="flex gap-3 p-2 rounded border transition-all"
                  [class.bg-red-500/10]="msg.isWarning"
                  [class.border-red-500/20]="msg.isWarning"
@@ -118,7 +116,7 @@
         <div class="flex justify-between items-center mb-4 px-2">
           <div class="flex flex-col">
             <span class="text-xs font-bold text-stone-400 uppercase tracking-wider">Coop & Yard Visualization</span>
-            <span class="text-[10px] text-amber-500/70 font-medium italic">IR Sensor Counting</span>
+            <span class="text-[10px] text-amber-500/70 font-medium italic">Dual IR Counting + Ultrasafe AI logic control</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex flex-col items-end">
@@ -145,60 +143,60 @@
           </div>
         </div>
         
-        <div id="coop-viewport" class="relative w-full h-64 bg-stone-900 rounded-2xl overflow-hidden border-2 border-stone-800"
+        <div id="coop-viewport" class="relative w-full h-48 bg-stone-900 rounded-2xl overflow-hidden border-2 border-stone-800"
              [class.error-glow]="doorState() === DoorState.ERROR">
-          
+
           <!-- Yard Area (Right) - Green Grass -->
-          <div class="absolute inset-0 bg-emerald-900/40" style="background-image: radial-gradient(circle, #10b981 1px, transparent 1px); background-size: 12px 12px;"></div>
-          
+          <div class="absolute inset-0 bg-emerald-900/40" style="background-image: radial-gradient(circle, #10b981 1px, transparent 1px); background-size: 8px 8px;"></div>
+
           <!-- Coop Area (Left) - Yellow Hay -->
-          <div class="absolute top-0 left-0 w-[176px] h-full bg-yellow-900/50 border-r-4 border-stone-800 z-10" style="background-image: repeating-linear-gradient(45deg, #a16207 0, #a16207 1px, transparent 0, transparent 50%); background-size: 6px 6px;">
-            <div class="absolute top-2 left-2 text-[8px] text-yellow-400 font-black uppercase tracking-widest bg-stone-950/60 px-1.5 py-0.5 rounded border border-yellow-500/20">Coop Interior (Hay)</div>
+          <div class="absolute top-0 left-0 w-[172px] h-full bg-yellow-900/50 border-r-4 border-stone-800 z-10" style="background-image: repeating-linear-gradient(45deg, #a16207 0, #a16207 1px, transparent 0, transparent 50%); background-size: 4px 4px;">
+            <div class="absolute top-2 left-2 text-[8px] text-yellow-400 font-black uppercase tracking-widest bg-stone-950/60 px-1 py-0.5 rounded border border-yellow-500/20">Coop Interior (Hay)</div>
           </div>
 
           <!-- Yard Label -->
-          <div class="absolute top-2 right-4 text-[8px] text-emerald-400 font-black uppercase tracking-widest bg-stone-950/60 px-1.5 py-0.5 rounded border border-emerald-500/20 z-10">Outdoor Yard (Grass)</div>
+          <div class="absolute top-2 right-3 text-[8px] text-emerald-400 font-black uppercase tracking-widest bg-stone-950/60 px-1 py-0.5 rounded border border-emerald-500/20 z-10">Outdoor Yard (Grass)</div>
 
           <!-- Walls -->
-          <div class="absolute left-[168px] top-0 w-8 h-[80px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
-          <div class="absolute left-[168px] top-[160px] w-8 h-[96px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+          <div class="absolute left-[168px] top-0 w-10 h-[60px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+          <div class="absolute left-[168px] top-[130px] w-10 h-[62px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
 
           <!-- Door Frame (The Opening) -->
-          <div class="absolute left-[168px] top-[80px] w-8 h-[80px] border-x-2 border-stone-800 bg-stone-950/30 z-10"></div>
+          <div class="absolute left-[168px] top-[60px] w-10 h-[70px] border-x-2 border-stone-800 bg-stone-950/30 z-10"></div>
 
-          <!-- The Interactive Wooden Door (Opening: 80px to 160px) -->
-          <div class="absolute left-[166px] top-[80px] w-12 transition-all duration-1000 ease-in-out z-30 overflow-hidden rounded-sm border-2 border-amber-900/50 shadow-2xl"
-               [style.height.px]="(doorState() === DoorState.CLOSED || doorState() === DoorState.CLOSING) ? 80 : 0"
+          <!-- The Interactive Wooden Door (slides up on open) -->
+          <div class="absolute left-[166px] top-[60px] w-14 h-[70px] transition-all duration-1000 ease-in-out z-30 rounded-sm border-2 border-amber-900/50 shadow-2xl group/door"
+               [style.transform]="(doorState() === DoorState.CLOSED || doorState() === DoorState.CLOSING) ? 'translateY(0)' : 'translateY(-60px)'"
                [class.shadow-orange-glow]="doorState() === DoorState.CLOSED || doorState() === DoorState.ERROR || doorState() === DoorState.CLOSING">
-            <!-- Rich Wooden Texture -->
-            <div class="w-full h-[80px] bg-amber-900" 
+            <div class="w-full h-full bg-amber-900 relative flex items-center justify-center"
                  style="background-image: repeating-linear-gradient(0deg, #451a03 0, #451a03 8px, #78350f 9px, #78350f 16px);">
+              <!-- Vertical DOOR text -->
+              <span class="text-[10px] font-black text-amber-500/40 uppercase tracking-[0.2em] [writing-mode:vertical-lr] rotate-180 z-10 pointer-events-none select-none">DOOR</span>
               <!-- Door Planks -->
-              <div class="absolute inset-0 flex justify-around opacity-30">
-                <div class="w-px h-full bg-black"></div>
+              <div class="absolute inset-0 flex justify-around opacity-30 pointer-events-none">
                 <div class="w-px h-full bg-black"></div>
                 <div class="w-px h-full bg-black"></div>
               </div>
               <!-- Door Handle/Detail -->
-              <div class="absolute top-1/2 right-1 w-1.5 h-6 bg-stone-400 rounded-full shadow-inner opacity-80"></div>
+              <div class="absolute top-1/2 right-1 w-1.5 h-6 bg-stone-400 rounded-full shadow-inner opacity-80 z-20"></div>
               <!-- Iron Reinforcements -->
-              <div class="absolute top-2 left-0 w-full h-1 bg-stone-800 opacity-60"></div>
-              <div class="absolute bottom-2 left-0 w-full h-1 bg-stone-800 opacity-60"></div>
+              <div class="absolute top-2 left-0 w-full h-1 bg-stone-800 opacity-60 pointer-events-none"></div>
+              <div class="absolute bottom-2 left-0 w-full h-1 bg-stone-800 opacity-60 pointer-events-none"></div>
             </div>
           </div>
 
           <!-- Chickens -->
           @for (chicken of chickens(); track chicken.id) {
-            <div class="absolute w-6 h-6 flex items-center justify-center z-20 chick-bob"
+            <div class="absolute w-10 h-10 flex items-center justify-center z-20 chick-bob"
                  [style.left.px]="chicken.x"
                  [style.top.px]="chicken.y">
-              <span class="text-lg drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">🐥</span>
+              <span class="text-2xl drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">🐥</span>
             </div>
           }
 
           <!-- Interior Light Glow -->
           @if (smartNightLight() && doorState() !== DoorState.OPEN) {
-            <div class="absolute top-0 left-0 w-[180px] h-full bg-amber-500/5 pointer-events-none"
+            <div class="absolute top-0 left-0 w-[170px] h-full bg-amber-500/5 pointer-events-none"
                  [class.animate-rapid-flash]="doorState() === DoorState.ERROR"></div>
           }
         </div>

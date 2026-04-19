@@ -81,6 +81,7 @@ export class App implements OnInit, OnDestroy {
   });
   totalChickens = this.coopService.totalChickens;
   statusMessages = computed(() => this.coopService.getDisplayMessages());
+  recentMessages = computed(() => this.statusMessages().slice(0, 3));
   isAnalyzing = this.coopService.isAnalyzing;
 
   musicDuration = this.coopService.musicDuration;
@@ -114,7 +115,7 @@ export class App implements OnInit, OnDestroy {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   insideCount = computed(() => {
-    return this.chickens().filter(c => c.x < 176).length; // Coop area boundary (DOOR_X)
+    return this.chickens().filter(c => c.x < 168).length; // Coop area boundary (DOOR_X)
   });
 
   ngOnInit() {
