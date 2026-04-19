@@ -174,6 +174,17 @@ async function handleDoorStatus(p: Record<string, unknown>): Promise<void> {
   const fromState = typeof p['from_state'] === 'string' ? p['from_state'] : 'UNKNOWN';
   const trigger = typeof p['last_event'] === 'string' ? p['last_event'] : 'esp32';
 
+  const [lastDoor] = await db
+    .select({ toState: doorEvents.toState })
+    .from(doorEvents)
+    .orderBy(desc(doorEvents.createdAt))
+    .limit(1);
+
+  if (lastDoor?.toState === toState) {
+    console.log(`[mqtt] ignoring duplicate door/status for state=${toState}`);
+    return;
+  }
+
   await db.insert(doorEvents).values({
     fromState,
     toState,

@@ -15,6 +15,10 @@ export function startScheduler(): void {
   console.log('[Scheduler] Jobs registered: weather-poll (*/15m), ai-analysis (hourly @:03), message-cleanup (03:00), esp32-heartbeat (*/1m), solar-automation (*/1m)');
 
   // Kick off immediately so a backend restart re-syncs door state to solar phase.
-  void weatherPollJob().then(() => solarAutomationJob());
-  void esp32HeartbeatJob();
+  void weatherPollJob().then(() => solarAutomationJob()).catch((err: unknown) => {
+    console.error('[Scheduler] startup chain failed:', err);
+  });
+  void esp32HeartbeatJob().catch((err: unknown) => {
+    console.error('[Scheduler] esp32HeartbeatJob startup failed:', err);
+  });
 }

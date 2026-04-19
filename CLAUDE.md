@@ -175,7 +175,7 @@ See `docs/migration-ollama.md` for the full migration decision record.
 - **Angular 21** with Signals (strict mode, OnPush)
 - **Angular Material** + **Tailwind CSS v4**
 - **Express v5** + **Angular SSR**
-- **Drizzle ORM** + **Postgres** (`pg` driver, `pg-core` schema)
+- **Drizzle ORM** + **Postgres** (`postgres-js` driver, `pg-core` schema)
 - **ws** WebSocket (native, no Socket.io)
 - **node-cron** background jobs
 - **multer** + **sharp** for image ingest (legacy upload path; live view now proxies Frigate)

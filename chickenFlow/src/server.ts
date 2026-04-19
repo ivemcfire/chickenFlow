@@ -16,7 +16,7 @@ import { startMqttBridge } from './server/services/mqtt-bridge.service.js';
 import { runMigrations } from './server/db/migrate.js';
 import { requestLogger } from './server/middleware/request-logger.js';
 import { errorHandler } from './server/middleware/error-handler.js';
-import { db } from './server/db/index.js';
+import { db, pgClient } from './server/db/index.js';
 import { settings } from './server/db/schema.js';
 
 const serverDistFolder = dirname(fileURLToPath(import.meta.url));
@@ -76,6 +76,17 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
     console.log(`ChickenFlow SSR + API listening on http://localhost:${port}`);
     console.log(`WebSocket endpoint: ws://localhost:${port}/ws`);
   });
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`[shutdown] received ${signal}, closing…`);
+    httpServer.close(async () => {
+      await pgClient.end({ timeout: 5 });
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGINT', (signal) => { void shutdown(signal); });
+  process.on('SIGTERM', (signal) => { void shutdown(signal); });
 }
 
 export const reqHandler = createNodeRequestHandler(app);
