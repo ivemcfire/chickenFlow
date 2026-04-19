@@ -41,10 +41,6 @@ app.use(
   }),
 );
 
-// ── AI snapshot captures (served for debugging / future gallery) ─────────────
-const capturesDir = process.env['CAPTURES_DIR'] ?? join(process.cwd(), 'data', 'captures');
-app.use('/captures', express.static(capturesDir, { maxAge: '1h' }));
-
 // ── Angular SSR ───────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   angularApp

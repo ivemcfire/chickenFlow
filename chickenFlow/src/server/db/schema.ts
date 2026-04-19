@@ -41,8 +41,6 @@ export const doorEvents = pgTable('door_events', {
 // Time-series from ESP32-S2 Mini. Pruned to 7 days by cleanup job.
 export const sensorReadings = pgTable('sensor_readings', {
   id: serial('id').primaryKey(),
-  // Legacy column — kept for migration compatibility, no longer populated
-  distanceCm: doublePrecision('distance_cm'),
   topSensorTriggered: boolean('top_sensor_triggered').notNull().default(false),
   irTriggered: boolean('ir_triggered').notNull().default(false),
   irATriggered: boolean('ir_a_triggered').notNull().default(false),
@@ -108,7 +106,6 @@ export const aiAnalysisLog = pgTable('ai_analysis_log', {
   // Response
   analysisText: text('analysis_text'),
   isWarning: boolean('is_warning').notNull().default(false),
-  countConfirmed: boolean('count_confirmed'),
   errorMessage: text('error_message'),
   durationMs: integer('duration_ms'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

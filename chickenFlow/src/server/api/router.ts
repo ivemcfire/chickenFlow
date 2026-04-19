@@ -24,7 +24,6 @@ apiRouter.get('/health', async (_req, res) => {
 apiRouter.use('/settings', settingsRouter);
 apiRouter.use('/door', doorEventsRouter);
 apiRouter.use('/esp32', sensorRouter);
-apiRouter.use('/sensor', sensorRouter);
 apiRouter.use('/camera', cameraRouter);
 apiRouter.use('/messages', messagesRouter);
 apiRouter.use('/weather', weatherRouter);

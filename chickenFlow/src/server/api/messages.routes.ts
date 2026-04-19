@@ -79,30 +79,3 @@ messagesRouter.delete('/:id', async (req, res, next) => {
     next(err);
   }
 });
-
-// One-time migration from localStorage blob
-messagesRouter.post('/migrate', async (req, res, next) => {
-  try {
-    const { chickenflow_state } = req.body as { chickenflow_state: string };
-    const state = JSON.parse(chickenflow_state) as { statusMessages?: StatusMessageRequest[] };
-    const messages = state.statusMessages ?? [];
-
-    let migrated = 0;
-    for (const msg of messages) {
-      await db.insert(statusMessages).values({
-        id: msg.id,
-        text: msg.text,
-        timestamp: msg.timestamp,
-        isWarning: msg.isWarning ?? false,
-        isError: msg.isError ?? false,
-        isPinned: msg.isPinned ?? false,
-        category: msg.category,
-      }).onConflictDoNothing();
-      migrated++;
-    }
-
-    res.json({ migrated });
-  } catch (err) {
-    next(err);
-  }
-});
