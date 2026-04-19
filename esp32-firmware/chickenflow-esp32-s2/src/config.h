@@ -25,6 +25,14 @@
 #define PIN_IR_SENSOR_A        9    // Yard-side beam
 #define PIN_IR_SENSOR_B       10    // Coop-side beam
 
+// LDR optical safety gate (ADC1 channel, raw 0-4095)
+// GL5528-class LDR in a voltage divider to 3.3 V. Higher value = brighter.
+// Backend gates morning OPEN on value >= settings.lightThreshold (default 2000)
+// with a 90 min post-sunrise failsafe that opens anyway if the sensor is dirty.
+#define PIN_LDR                4
+#define LDR_SAMPLE_MS        500    // ADC sample cadence
+#define LDR_EMA_ALPHA_X100    10    // α = 0.10 (fixed-point, integer math)
+
 // I²C bus (shared by DS3231 RTC + INA219 current sensor)
 #define PIN_I2C_SDA           33
 #define PIN_I2C_SCL           35

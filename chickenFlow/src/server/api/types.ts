@@ -24,6 +24,10 @@ export interface SensorReadingRequest {
   irTriggered?: boolean;         // legacy single-beam field
   irATriggered?: boolean;        // tunnel beam A (coop side)
   irBTriggered?: boolean;        // tunnel beam B (yard side)
+  ir1?: boolean;                 // firmware alias for irATriggered
+  ir2?: boolean;                 // firmware alias for irBTriggered
+  direction?: 'IN' | 'OUT';      // latched traversal event since last post
+  lightLevel?: number;           // LDR EMA raw ADC 0..4095
   chickensInside: number;
   totalChickens: number;
   doorState: string;

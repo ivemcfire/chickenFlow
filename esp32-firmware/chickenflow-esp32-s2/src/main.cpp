@@ -56,6 +56,19 @@ bool          irBPrev          = HIGH;
 unsigned long irALastEdgeMs    = 0;
 unsigned long irBLastEdgeMs    = 0;
 
+// Last completed traversal, reported once on the next sensor POST and then
+// cleared. Using a latched field (rather than streaming every event) is fine
+// because backend just wants to see "at least one crossing happened since the
+// last poll" and the IN/OUT counter is derived from chickensInside anyway.
+const char*   lastTunnelDirection = nullptr;   // "IN" | "OUT" | nullptr
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LDR optical safety gate — analog read on GPIO 4 with integer EMA
+// Seeded on first sample so the initial value isn't 0 (which would look dark).
+// ─────────────────────────────────────────────────────────────────────────────
+int32_t       ldrSmoothedX100  = -1;     // scaled by 100 to preserve α fraction
+unsigned long ldrLastSampleMs  = 0;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Timers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +113,7 @@ int           ledTransferFlickers = 0;   // remaining flicker count
 // Prototypes
 // ─────────────────────────────────────────────────────────────────────────────
 void     tickTunnelCounter();
+void     tickLdr();
 bool     queryObstructionAbort();
 void     motorOpen();
 void     motorClose();
@@ -244,6 +258,9 @@ void loop() {
 
   // Dual-IR tunnel counter — direction from event order.
   tickTunnelCounter();
+
+  // LDR ambient-light sampler (EMA-smoothed; telemetry only, no gating here).
+  tickLdr();
 
   // Tick the non-blocking door motor state machine
   tickDoorMotor();
@@ -461,6 +478,7 @@ void tickTunnelCounter() {
       if (bBroken) {
         // A→B = OUT (coop → yard)
         chickensInside = max(0, chickensInside - 1);
+        lastTunnelDirection = "OUT";
         DBGF("[Tunnel] A→B  OUT  inside=%d\n", chickensInside);
         tunnelPhase = TUNNEL_IDLE;
       }
@@ -470,11 +488,36 @@ void tickTunnelCounter() {
       if (aBroken) {
         // B→A = IN (yard → coop)
         chickensInside++;
+        lastTunnelDirection = "IN";
         DBGF("[Tunnel] B→A  IN  inside=%d\n", chickensInside);
         tunnelPhase = TUNNEL_IDLE;
       }
       break;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LDR EMA sampler — analogRead() on PIN_LDR every LDR_SAMPLE_MS, smoothed with
+// α = LDR_EMA_ALPHA_X100 / 100. Value stored x100 to avoid float math on the
+// S2 (no FPU). Divide by 100 at report time.
+void tickLdr() {
+  unsigned long now = millis();
+  if (now - ldrLastSampleMs < LDR_SAMPLE_MS) return;
+  ldrLastSampleMs = now;
+
+  int32_t raw = analogRead(PIN_LDR);              // 0..4095
+  int32_t rawX100 = raw * 100;
+
+  if (ldrSmoothedX100 < 0) {
+    ldrSmoothedX100 = rawX100;                    // seed on first sample
+  } else {
+    // EMA: s += α * (raw - s)
+    ldrSmoothedX100 += ((rawX100 - ldrSmoothedX100) * LDR_EMA_ALPHA_X100) / 100;
+  }
+}
+
+static inline int ldrSmoothed() {
+  return ldrSmoothedX100 < 0 ? 0 : (int)(ldrSmoothedX100 / 100);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -521,14 +564,21 @@ bool queryObstructionAbort() {
 void postSensorReading() {
   bool irA = (digitalRead(PIN_IR_SENSOR_A) == LOW);
   bool irB = (digitalRead(PIN_IR_SENSOR_B) == LOW);
+  int  light = ldrSmoothed();
 
   JsonDocument doc;
   doc["irTriggered"]    = irA || irB;
   doc["irATriggered"]   = irA;
   doc["irBTriggered"]   = irB;
+  doc["ir1"]            = irA;                      // alias — current beam A state
+  doc["ir2"]            = irB;                      // alias — current beam B state
   doc["chickensInside"] = chickensInside;
   doc["totalChickens"]  = 0;  // Backend fills from settings
   doc["doorState"]      = doorStateStr(doorState);
+  doc["lightLevel"]     = light;                    // LDR EMA 0..4095
+  if (lastTunnelDirection) {
+    doc["direction"] = lastTunnelDirection;         // "IN" | "OUT"
+  }
 
   String body;
   serializeJson(doc, body);
@@ -540,8 +590,16 @@ void postSensorReading() {
   http.addHeader("Content-Type", "application/json");
 
   int code = http.POST(body);
-  DBGF("[Sensor] POST %d  inside=%d\n", code, chickensInside);
+  DBGF("[Sensor] POST %d  inside=%d  light=%d  dir=%s\n",
+       code, chickensInside, light,
+       lastTunnelDirection ? lastTunnelDirection : "-");
   http.end();
+
+  // Clear the latched direction only on successful delivery — otherwise a
+  // transient HTTP error would swallow the event.
+  if (code >= 200 && code < 300) {
+    lastTunnelDirection = nullptr;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

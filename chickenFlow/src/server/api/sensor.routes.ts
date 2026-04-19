@@ -30,11 +30,15 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       console.warn(`[sensor] Drift detected: chickensInside=${rawInside} exceeds totalChickens=${totalChickens}; clamped to ${clampedInside}`);
     }
 
+    // Firmware sends ir1/ir2 as aliases for irATriggered/irBTriggered — accept either.
+    const irA = body.irATriggered ?? body.ir1 ?? false;
+    const irB = body.irBTriggered ?? body.ir2 ?? false;
+
     await db.insert(sensorReadings).values({
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
-      irATriggered: body.irATriggered ?? false,
-      irBTriggered: body.irBTriggered ?? false,
+      irATriggered: irA,
+      irBTriggered: irB,
       chickensInside: clampedInside,
       totalChickens,
       doorState: body.doorState,
@@ -43,13 +47,17 @@ sensorRouter.post('/sensor', async (req, res, next) => {
     wsBroadcaster.broadcast('sensor:reading', {
       topSensorTriggered: body.topSensorTriggered ?? false,
       irTriggered: body.irTriggered ?? false,
-      irATriggered: body.irATriggered ?? false,
-      irBTriggered: body.irBTriggered ?? false,
+      irATriggered: irA,
+      irBTriggered: irB,
       chickensInside: clampedInside,
       doorState: body.doorState,
+      direction: body.direction,
+      lightLevel: body.lightLevel,
     });
 
-    await markEsp32Online();
+    await markEsp32Online(
+      typeof body.lightLevel === 'number' ? { lightLevel: body.lightLevel } : undefined,
+    );
     res.status(201).json({ ok: true });
   } catch (err) {
     next(err);
