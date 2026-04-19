@@ -20,11 +20,12 @@ export class App {
   weatherForecast = this.coopService.weatherForecast;
   sunrise = this.coopService.sunrise;
   sunset = this.coopService.sunset;
+  doorOpenTime = this.coopService.doorOpenTime;
+  doorCloseTime = this.coopService.doorCloseTime;
   solarTimer = this.coopService.solarTimer;
   solarTimerLabel = this.coopService.solarTimerLabel;
   weatherLock = this.coopService.weatherLock;
   startTime = this.coopService.startTime;
-  distance = this.coopService.distance;
   systemOnline = this.coopService.systemOnline;
   ldrOnline = this.coopService.ldrOnline;
   cameraOnline = this.coopService.cameraOnline;

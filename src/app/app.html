@@ -109,7 +109,7 @@
         <div class="flex justify-between items-center mb-4 px-2">
           <div class="flex flex-col">
             <span class="text-xs font-bold text-stone-400 uppercase tracking-wider">Coop & Yard Visualization</span>
-            <span class="text-[10px] text-amber-500/70 font-medium italic">Dual IR Counting + Ultrasafe AI logic control</span>
+            <span class="text-[10px] text-amber-500/70 font-medium italic">Dual IR Counting + AI logic control</span>
           </div>
           <div class="flex items-center gap-3">
             <div class="flex flex-col items-end">
@@ -123,7 +123,7 @@
                    doorState() === DoorState.CLOSED ? 'Night Mode: Secure' : 
                    doorState() === DoorState.CLOSING ? 'System: Closing...' :
                    doorState() === DoorState.OPENING ? 'System: Re-Opening...' :
-                   doorState() === DoorState.ERROR ? 'ALARM: Obstruction' : 'Transitioning...' }}
+                   doorState() === DoorState.ERROR ? 'ALARM: System Error' : 'Transitioning...' }}
               </span>
             </div>
           </div>
@@ -144,31 +144,53 @@
           <div class="absolute top-2 right-3 text-[8px] text-emerald-400 font-black uppercase tracking-widest bg-stone-950/60 px-1 py-0.5 rounded border border-emerald-500/20 z-10">Outdoor Yard (Grass)</div>
 
           <!-- Walls -->
-          <div class="absolute left-[168px] top-0 w-10 h-[60px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
-          <div class="absolute left-[168px] top-[130px] w-10 h-[62px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+          <div class="absolute left-[168px] top-0 w-10 h-[70px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+          <div class="absolute left-[168px] top-[134px] w-10 h-[58px] bg-stone-800 border-x-2 border-stone-700 z-20 shadow-xl door-frame-glow"></div>
+
+          <!-- The Entrance Tunnel (Filling the Gap, Outside Coop) -->
+          <div class="absolute left-[168px] top-[70px] w-[50px] h-[64px] z-10">
+            <!-- Tunnel Side Walls (Horizontal) -->
+            <div class="absolute top-0 left-0 w-full h-1.5 bg-stone-700 border-y border-stone-800 shadow-sm z-20"></div>
+            <div class="absolute bottom-0 left-0 w-full h-1.5 bg-stone-700 border-y border-stone-800 shadow-sm z-20"></div>
+            <!-- Tunnel Floor -->
+            <div class="absolute inset-0 bg-stone-950/40 backdrop-blur-[1px]"></div>
+            
+            <!-- IR Sensors (Front and Back) -->
+            <!-- Front (Yard side) -->
+            <div class="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-red-500/20 border-x border-red-500/30 flex flex-col justify-between items-center py-1 z-30">
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir1() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir1() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir1() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+            </div>
+            <!-- Back (Entrance side) -->
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-red-500/20 border-x border-red-500/30 flex flex-col justify-between items-center py-1 z-30">
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir2() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir2() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+               <div [class]="'w-0.5 h-0.5 rounded-full ' + (ir2() ? 'bg-red-400 animate-pulse' : 'bg-red-900')"></div>
+            </div>
+          </div>
 
           <!-- Door Frame (The Opening) -->
-          <div class="absolute left-[168px] top-[60px] w-10 h-[70px] border-x-2 border-stone-800 bg-stone-950/30 z-10"></div>
+          <div class="absolute left-[168px] top-[70px] w-10 h-[64px] border-x-2 border-stone-800 bg-stone-950/30 z-10 shadow-inner"></div>
 
-          <!-- The Interactive Wooden Door (Opening: 60px to 130px) -->
-          <div class="absolute left-[166px] top-[60px] w-14 h-[70px] transition-all duration-1000 ease-in-out z-30 rounded-sm border-2 border-amber-900/50 shadow-2xl group/door"
+          <!-- The Interactive Metallic Door (Opening: 70px to 134px) -->
+          <div class="absolute left-[166px] top-[70px] w-14 h-[64px] transition-all duration-1000 ease-in-out z-30 rounded-sm border-2 border-stone-500 shadow-2xl group/door overflow-hidden"
                [style.transform]="(doorState() === DoorState.CLOSED || doorState() === DoorState.CLOSING) ? 'translateY(0)' : 'translateY(-60px)'"
-               [class.shadow-orange-glow]="doorState() === DoorState.CLOSED || doorState() === DoorState.ERROR || doorState() === DoorState.CLOSING">
-            <!-- Rich Wooden Texture -->
-            <div class="w-full h-full bg-amber-900 relative flex items-center justify-center" 
-                 style="background-image: repeating-linear-gradient(0deg, #451a03 0, #451a03 8px, #78350f 9px, #78350f 16px);">
+               [class.shadow-blue-glow]="doorState() === DoorState.CLOSED || doorState() === DoorState.ERROR || doorState() === DoorState.CLOSING">
+            <!-- Brushed Metal Texture -->
+            <div class="w-full h-full bg-stone-300 relative flex items-center justify-center" 
+                 style="background-image: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, rgba(0,0,0,0.15) 50%, rgba(255,255,255,0.2) 100%), repeating-linear-gradient(90deg, transparent 0, transparent 2px, rgba(0,0,0,0.03) 3px);">
               <!-- Vertical TEXT -->
-              <span class="text-[10px] font-black text-amber-500/40 uppercase tracking-[0.2em] [writing-mode:vertical-lr] rotate-180 z-10 pointer-events-none select-none">DOOR</span>
-              <!-- Door Planks -->
-              <div class="absolute inset-0 flex justify-around opacity-30 pointer-events-none">
-                <div class="w-px h-full bg-black"></div>
-                <div class="w-px h-full bg-black"></div>
-              </div>
-              <!-- Door Handle/Detail -->
-              <div class="absolute top-1/2 right-1 w-1.5 h-6 bg-stone-400 rounded-full shadow-inner opacity-80 z-20"></div>
-              <!-- Iron Reinforcements -->
-              <div class="absolute top-2 left-0 w-full h-1 bg-stone-800 opacity-60 pointer-events-none"></div>
-              <div class="absolute bottom-2 left-0 w-full h-1 bg-stone-800 opacity-60 pointer-events-none"></div>
+              <span class="text-[9px] font-black text-stone-900/60 uppercase tracking-[0.4em] [writing-mode:vertical-lr] rotate-180 z-10 pointer-events-none select-none">DOOR</span>
+              <!-- Metallic Details (Rivets) -->
+              <div class="absolute top-1 left-1 w-1 h-1 bg-stone-500 rounded-full shadow-inner"></div>
+              <div class="absolute top-1 right-1 w-1 h-1 bg-stone-500 rounded-full shadow-inner"></div>
+              <div class="absolute bottom-1 left-1 w-1 h-1 bg-stone-500 rounded-full shadow-inner"></div>
+              <div class="absolute bottom-1 right-1 w-1 h-1 bg-stone-500 rounded-full shadow-inner"></div>
+              <!-- Metal Plating Lines -->
+              <div class="absolute top-1/4 left-0 w-full h-px bg-white/10"></div>
+              <div class="absolute top-1/2 left-0 w-full h-px bg-white/10"></div>
+              <div class="absolute top-3/4 left-0 w-full h-px bg-white/10"></div>
             </div>
           </div>
 
@@ -200,16 +222,16 @@
         </div>
         <div class="glass-card p-4 text-center relative overflow-hidden group">
           <div class="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">Solar Cycle</p>
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">COOP CYCLE</p>
           <div class="flex items-center justify-center gap-3">
             <div class="flex flex-col items-center">
               <mat-icon class="text-xs text-amber-500">wb_sunny</mat-icon>
-              <span class="text-xs font-black text-stone-100">{{ sunrise() }}</span>
+              <span class="text-xs font-black text-stone-100">{{ doorOpenTime() }}</span>
             </div>
             <div class="w-px h-6 bg-stone-800"></div>
             <div class="flex flex-col items-center">
               <mat-icon class="text-xs text-stone-500">nights_stay</mat-icon>
-              <span class="text-xs font-black text-stone-100">{{ sunset() }}</span>
+              <span class="text-xs font-black text-stone-100">{{ doorCloseTime() }}</span>
             </div>
           </div>
         </div>

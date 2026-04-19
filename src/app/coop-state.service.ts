@@ -50,7 +50,8 @@ export class CoopStateService {
   weatherForecast = signal<WeatherDay[]>([]);
   sunrise = signal<string>('06:00');
   sunset = signal<string>('18:00');
-  distance = signal<number>(45); // Ultrasonic for obstruction
+  doorOpenTime = signal<string>('07:00');
+  doorCloseTime = signal<string>('18:30');
   ir1 = signal<boolean>(false); // IR 1 (Interior)
   ir2 = signal<boolean>(false); // IR 2 (Exterior)
   private crossingSequence: ('ir1' | 'ir2')[] = [];
@@ -203,9 +204,10 @@ export class CoopStateService {
       
       const currentSunrise = this.sunrise();
       const currentSunset = this.sunset();
+      const openTime = this.doorOpenTime();
+      const closeTime = this.doorCloseTime();
 
-      // Calculate offsets
-      const sunrisePlus1h = this.offsetTime(currentSunrise, 60);
+      // Calculate offsets for herding
       const sunsetMinus1h = this.offsetTime(currentSunset, -60);
       const sunsetMinus55m = this.offsetTime(currentSunset, -55);
 
@@ -248,27 +250,33 @@ export class CoopStateService {
         }
       }
 
-      // --- MORNING LOGIC (Sunrise + 1h) ---
-      if (timeStr === sunrisePlus1h && this.doorState() === DoorState.CLOSED) {
+      // --- MORNING LOGIC (Door Open Time) ---
+      if (timeStr === openTime && this.doorState() === DoorState.CLOSED) {
         if (this.weatherLock()) {
-          this.addStatusMessage("Sunrise + 1h detected, but AI has locked the door due to severe weather.", true, true);
+          this.addStatusMessage(`Time is ${openTime}, but AI has locked the door due to severe weather.`, true, true);
         } else {
           this.setDoorState(DoorState.OPEN, false);
           this.musicSignal.set(true);
           this.smartNightLight.set(true);
-          this.addStatusMessage("Morning routine: Door opened, music signal active, entrance illuminated.");
+          this.addStatusMessage("Morning routine: Door opened based on COOP CYCLE schedule.");
           
           // Turn off music after a short while (e.g. 5 mins)
           setTimeout(() => this.musicSignal.set(false), 300000);
         }
       }
 
-      // --- EVENING LOGIC (Sunset - 1h) ---
+      // --- EVENING LOGIC (Door Close Time) ---
+      if (timeStr === closeTime && this.doorState() === DoorState.OPEN) {
+        this.setDoorState(DoorState.CLOSED, false);
+        this.addStatusMessage("Evening routine: Door reached scheduled closing time.");
+      }
+
+      // --- HERDING LOGIC (Sunset relative) ---
       if (timeStr === sunsetMinus1h) {
         if (!this.musicSignal()) {
           this.musicSignal.set(true);
           this.smartNightLight.set(true);
-          this.addStatusMessage("Evening routine: Music signal and entrance light active for herding.");
+          this.addStatusMessage("Evening herding: Music signal and entrance light active.");
         }
       }
 
@@ -389,8 +397,15 @@ export class CoopStateService {
       if (data.daily.sunrise?.[0]) {
         const sr = new Date(data.daily.sunrise[0]);
         const ss = new Date(data.daily.sunset[0]);
-        this.sunrise.set(sr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
-        this.sunset.set(ss.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+        const sunriseTime = sr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        const sunsetTime = ss.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+        
+        this.sunrise.set(sunriseTime);
+        this.sunset.set(sunsetTime);
+        
+        // Calculate Coop Cycle: Open +60m, Close +30m
+        this.doorOpenTime.set(this.offsetTime(sunriseTime, 60));
+        this.doorCloseTime.set(this.offsetTime(sunsetTime, 30));
       }
       
       // Block automated weather responses in Service Mode
@@ -479,128 +494,134 @@ export class CoopStateService {
     if (this.serviceMode()) return;
     
     const currentState = this.doorState();
-    const CHICKEN_RADIUS = 16; 
-    const FRAME_X_LEFT = 158; // Center: 168 (New Wall Left) + 5 - 15 buffer? No, let's keep relative.
-    const FRAME_X_RIGHT = 188; // 168 + 10 (wall) + 10 (buffer)
-    const BUFFER = 24; // Radius (20) + margin (4)
-    const SAFE_X_MIN = FRAME_X_LEFT - BUFFER;
-    const SAFE_X_MAX = FRAME_X_RIGHT + BUFFER;
-    const DOOR_Y_MIN = 60;
-    const DOOR_Y_MAX = 130;
+    const FRAME_X = 168; 
+    const TUNNEL_LENGTH = 50; 
+    const TUNNEL_X_START = FRAME_X; // Outside (Yard side starts here)
+    const TUNNEL_X_END = TUNNEL_X_START + TUNNEL_LENGTH; // 218
+    const TUNNEL_Y_CENTER = 102; // (70 + (64/2)) = 102
+    const TUNNEL_HALF_HEIGHT = 32; // Full gap height (64/2)
+    
+    // Traffic Control: Track who is logically in the tunnel area
+    // This allows simulating "one-by-one" passage
+    const chickensInTunnel = this.chickens().filter(c => c.x >= TUNNEL_X_START && c.x <= TUNNEL_X_END).map(c => c.id);
 
     this.chickens.update(prev => {
       const next = prev.map(c => ({ ...c }));
 
-      for (let i = 0; i < next.length; i++) {
-        const c = next[i];
-        
+      for (const c of next) {
         // 1. Determine Target Side occasionally
         if (currentState === DoorState.OPEN && Math.random() < 0.005) {
           c.isInside = !c.isInside;
         }
 
         // 2. Set Target Position based on side
-        if (Math.random() < 0.02) { // Only pick new target occasionally
+        if (Math.random() < 0.02) { 
           if (currentState === DoorState.CLOSED || currentState === DoorState.ERROR) {
-            if (c.x < 168) {
-              c.targetX = Math.max(15, Math.min(SAFE_X_MIN - 5, c.targetX + (Math.random() - 0.5) * 75));
+            if (c.x < FRAME_X) {
+              c.targetX = Math.max(15, Math.min(FRAME_X - 25, c.targetX + (Math.random() - 0.5) * 80));
             } else {
-              c.targetX = Math.max(SAFE_X_MAX + 5, Math.min(380, c.targetX + (Math.random() - 0.5) * 75));
+              c.targetX = Math.max(TUNNEL_X_END + 25, Math.min(380, c.targetX + (Math.random() - 0.5) * 80));
             }
           } else {
             // Door open, targets can be anywhere
-            c.targetX = Math.max(15, Math.min(380, c.targetX + (Math.random() - 0.5) * 100));
-            // If target is in the frame X range, push it towards the opening
-            if (c.targetX > SAFE_X_MIN && c.targetX < SAFE_X_MAX) {
-               if (Math.random() < 0.5) { 
-                 c.targetX = (c.x < 168) ? SAFE_X_MIN - 10 : SAFE_X_MAX + 10;
-               } else { 
-                 c.targetY = 90; 
-               }
+            c.targetX = Math.max(15, Math.min(380, c.targetX + (Math.random() - 0.5) * 120));
+            
+            // If they need to switch sides, guide them to the tunnel
+            const targetSide = c.targetX < FRAME_X ? 'inside' : 'outside';
+            const currentSide = c.x < FRAME_X ? 'inside' : 'outside';
+            
+            if (targetSide !== currentSide) {
+              if (currentSide === 'inside') {
+                c.targetX = TUNNEL_X_START + 5;
+                c.targetY = TUNNEL_Y_CENTER;
+              } else {
+                c.targetX = TUNNEL_X_END - 5;
+                c.targetY = TUNNEL_Y_CENTER;
+              }
             }
           }
           c.targetY = Math.max(25, Math.min(165, c.targetY + (Math.random() - 0.5) * 100));
         }
 
         // 3. Move towards target
-        let moveX = (c.targetX - c.x) * 0.05;
-        let moveY = (c.targetY - c.y) * 0.05;
+        let moveX = (c.targetX - c.x) * (0.03 + Math.random() * 0.03);
+        const moveY = (c.targetY - c.y) * 0.04;
+
+        // Tunnel Entry Constraint: One-by-one from Yard
+        const isEntryAttempt = (c.x < TUNNEL_X_START && c.targetX >= TUNNEL_X_START) || 
+                               (c.x > TUNNEL_X_END && c.targetX <= TUNNEL_X_END);
+        
+        // If tunnel is occupied and I'm not the one inside, wait
+        const isOccupied = chickensInTunnel.length > 0 && !chickensInTunnel.includes(c.id);
+
+        if (isEntryAttempt && isOccupied && currentState === DoorState.OPEN) {
+          if (c.x < TUNNEL_X_START && c.x + moveX >= TUNNEL_X_START - 5) moveX = 0;
+          if (c.x > TUNNEL_X_END && c.x + moveX <= TUNNEL_X_END + 5) moveX = 0;
+        }
 
         let nextX = c.x + moveX;
         let nextY = c.y + moveY;
 
-        // Strict Boundary Check
-        const inFrameX = nextX > SAFE_X_MIN && nextX < SAFE_X_MAX;
-        const inOpeningY = nextY > DOOR_Y_MIN + 5 && nextY < DOOR_Y_MAX - 5;
+        // Environmental Collisions
+        const inTunnelX = nextX >= TUNNEL_X_START && nextX <= TUNNEL_X_END;
+        const inTunnelY = nextY >= TUNNEL_Y_CENTER - TUNNEL_HALF_HEIGHT && nextY <= TUNNEL_Y_CENTER + TUNNEL_HALF_HEIGHT;
 
-        if (inFrameX) {
-          if (currentState !== DoorState.OPEN || !inOpeningY) {
-            // Blocked!
-            moveX = 0;
-            // If they are already "inside" the forbidden zone, push them out
-            if (c.x > SAFE_X_MIN && c.x < SAFE_X_MAX) {
-               moveX = (c.x < 168) ? -2 : 2;
-            }
-            
-            if (currentState === DoorState.OPEN) {
-              moveY = (nextY < 90) ? 2 : -2;
+        // Strict Middle Wall Boundary (Prevent entering the wall)
+        // few extra pixels as requested
+        const wallThickness = 12; 
+        if (nextX >= FRAME_X - wallThickness && nextX <= FRAME_X + wallThickness) {
+          if (currentState !== DoorState.OPEN || !inTunnelY) {
+            // Hard stop and push back
+            if (c.x < FRAME_X) {
+              nextX = Math.min(c.x, FRAME_X - wallThickness);
+            } else {
+              nextX = Math.max(c.x, FRAME_X + wallThickness);
             }
           }
         }
-
-        nextX = c.x + moveX;
-        nextY = c.y + moveY;
-
-        // Dual IR Crossing Simulation
-        if (nextX > 162 && nextX < 174 && inOpeningY && currentState === DoorState.OPEN) {
-           const direction = nextX > c.x ? 'entering' : 'exiting';
-           if (direction === 'entering' && c.x <= 162 && nextX > 162) {
-              this.handleIRTrigger('ir2');
-              setTimeout(() => this.handleIRTrigger('ir1'), 150);
-           } else if (direction === 'exiting' && c.x >= 174 && nextX < 174) {
-              this.handleIRTrigger('ir1');
-              setTimeout(() => this.handleIRTrigger('ir2'), 150);
+        
+        // Tunnel side walls (One-by-one lane)
+        if (inTunnelX) {
+           if (!inTunnelY) {
+             nextY = c.y; 
            }
         }
 
-        // 6. Horizontal boundaries
+        // IR Sensor Logic at Tunnel Front (Yard side) and Back (Coop side)
+        // Back Sensor (ir2) = TUNNEL_X_START (153)
+        // Front Sensor (ir1) = TUNNEL_X_END (203)
+        if (currentState === DoorState.OPEN) {
+           // Crossing Back Sensor (ir2)
+           if (c.x < TUNNEL_X_START && nextX >= TUNNEL_X_START) {
+              this.handleIRTrigger('ir2'); // Exiting coop: hit back sensor first
+           } else if (c.x >= TUNNEL_X_START && nextX < TUNNEL_X_START) {
+              this.handleIRTrigger('ir2'); // Entering coop: hit back sensor second
+           }
+
+           // Crossing Front Sensor (ir1)
+           if (c.x > TUNNEL_X_END && nextX <= TUNNEL_X_END) {
+              this.handleIRTrigger('ir1'); // Entering coop: hit front sensor first
+           } else if (c.x <= TUNNEL_X_END && nextX > TUNNEL_X_END) {
+              this.handleIRTrigger('ir1'); // Exiting coop: hit front sensor second
+           }
+        }
+
+        // Boundaries
         if (nextX < 15) nextX = 15;
         if (nextX > 375) nextX = 375;
-        // Vertical boundaries
         if (nextY < 12) nextY = 12;
         if (nextY > 145) nextY = 145;
 
         c.x = nextX;
         c.y = nextY;
-
-        // 4. Realistic Bouncing (Collision)
-        for (let j = 0; j < next.length; j++) {
-          if (i === j) continue;
-          const other = next[j];
-          const dx = c.x - other.x;
-          const dy = c.y - other.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const minDistance = CHICKEN_RADIUS * 2;
-
-          if (dist < minDistance) {
-            const angle = Math.atan2(dy, dx);
-            const overlap = minDistance - dist;
-            const force = overlap * 0.5;
-            c.x += Math.cos(angle) * force;
-            c.y += Math.sin(angle) * force;
-            other.x -= Math.cos(angle) * force;
-            other.y -= Math.sin(angle) * force;
-          }
-        }
       }
 
       // Check for Automatic Door Closing (Smart Mode)
       const now = Date.now();
-      const manualCooldown = 30000; // 30 seconds cooldown after manual action
+      const manualCooldown = 30000;
       if (currentState === DoorState.OPEN && (now - this.lastManualAction > manualCooldown)) {
         const insideCount = next.filter(c => c.x < 168).length;
         if (insideCount === next.length) {
-          // All chickens are in!
           this.setDoorState(DoorState.CLOSED, false);
           this.addStatusMessage("All chickens are safely inside. Smart Door secured.");
         }
@@ -638,11 +659,9 @@ export class CoopStateService {
     }
 
     if (state === DoorState.ERROR) {
-      this.distance.set(15); 
-      this.addStatusMessage("System Error: Door obstruction detected after 3 attempts!", false, true, 'SYSTEM_ERROR', true);
+      this.addStatusMessage("System Error: Door mechanism failure requested! Manual inspection required.", false, true, 'SYSTEM_ERROR', true);
       this.triggerErrorAlerts();
     } else {
-      this.distance.set(45);
       this.unpinCategory('SYSTEM_ERROR');
       this.stopErrorAlerts();
     }
@@ -704,37 +723,18 @@ export class CoopStateService {
 
   private async initiateClosingSequence() {
     this.doorState.set(DoorState.CLOSING);
-    this.addStatusMessage(`Closing sequence initiated (Attempt ${this.closeAttempts + 1}/3)...`);
+    this.addStatusMessage(`Closing sequence initiated...`);
 
-    // Simulate sensor check delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Simulate mechanism duration
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-    // Check for obstruction (Ultrasonic Safety)
-    const distanceThreshold = 25; // 25cm for safety
-    const isObstructed = this.distance() < distanceThreshold || (Math.random() < 0.2 && this.closeAttempts < 3);
-
-    if (isObstructed) {
-      this.closeAttempts++;
-      this.distance.set(12); // Logic: distance dips during obstruction
-      this.addStatusMessage(`SAFETY ALERT: Obstruction detected at ${this.distance()}cm! Re-opening door.`, true, false);
-      
-      this.doorState.set(DoorState.OPENING);
-      await this.runAIAnalysis("Immediate obstruction detected during closing. Door safety triggered.");
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      this.doorState.set(DoorState.OPEN);
-      this.distance.set(45); // Clear obstruction for next attempt
-
-      if (this.closeAttempts < 3) {
-        this.addStatusMessage(`Waiting for path to clear before retry...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        this.initiateClosingSequence();
-      } else {
-        this.setDoorState(DoorState.ERROR, false);
-      }
+    // Simple random chance of physical jam or motor fault simulation (legacy error state)
+    if (Math.random() < 0.05) {
+      this.addStatusMessage(`DOOR ERROR: Motor torque limit exceeded!`, true, true, 'SYSTEM_ERROR', true);
+      this.setDoorState(DoorState.ERROR, false);
     } else {
       this.doorState.set(DoorState.CLOSED);
       this.closeAttempts = 0;
-      this.distance.set(45);
       this.addStatusMessage("Door secured successfully.");
     }
   }
@@ -752,7 +752,6 @@ export class CoopStateService {
     })));
     this.doorState.set(DoorState.CLOSED);
     this.lastManualAction = Date.now();
-    this.distance.set(45);
     this.addStatusMessage("Manual chicken return triggered. All chickens secured.", false, false);
     
     // Reset returning state after animation
@@ -770,24 +769,21 @@ export class CoopStateService {
       const insideCount = this.chickens().filter(c => c.x < 128).length;
       const total = this.totalChickens();
       const weather = this.weatherForecast()[0];
-      const distance = this.distance();
       
-      const prompt = `You are an AI Chicken Coop Manager with Dual IR Tracking and Ultrasonic Safety systems.
+      const prompt = `You are an AI Chicken Coop Manager with Dual IR Tracking.
       
       System Data:
       - Current Time: ${this.currentTime()}
       - Door State: ${this.doorState()}
       - Occupancy: ${insideCount}/${total} chickens inside
-      - Ultrasonic Path: ${distance}cm clear
       - Weather: ${weather ? `${weather.temp}°C, code ${weather.code}` : 'Unknown'}
       - Lockdown: ${this.weatherLock() ? 'ACTIVE' : 'Inactive'}
       - Service Mode: ${this.serviceMode() ? 'ACTIVE' : 'Inactive'}
       - Context: ${context}
-
+ 
       Analysis Objectives:
-      1. Safety: If distance < 25cm during door movement, flag as CRITICAL OBSTRUCTION.
-      2. Security: At evening/night, identify if chickens are left outside.
-      3. Logic Check: Report on Dual IR count consistency vs visual occupancy.
+      1. Security: At evening/night, identify if chickens are left outside.
+      2. Logic Check: Report on Dual IR count consistency vs visual occupancy.
 
       Provide a concise status report with action recommendations. Max 40 words. Use markdown icons.`;
 
