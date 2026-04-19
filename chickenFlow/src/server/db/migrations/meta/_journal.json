@@ -43,6 +43,13 @@
       "when": 1776576372935,
       "tag": "0005_cultured_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776577084457,
+      "tag": "0006_clever_leper_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -1,34 +1,92 @@
+import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { sensorReadings } from '../db/schema.js';
-import { desc } from 'drizzle-orm';
+import { deviceStatus } from '../db/schema.js';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 
+const DEVICE_ID = 'esp32-s2-coop';
 const OFFLINE_THRESHOLD_MS = 15 * 60 * 1000;
 
-let lastKnownOnline: boolean | null = null;
-let lastContactAt = 0;
+// Used only to debounce broadcasts — not authoritative for online status.
+let lastBroadcastOnline: boolean | null = null;
 
-export function noteEsp32Contact(): void {
-  lastContactAt = Date.now();
+type DiagFields = Partial<{
+  rssi: number;
+  voltageV: number;
+  currentMa: number;
+  tempC: number;
+  uptimeS: number;
+}>;
+
+export async function noteEsp32Contact(fields?: DiagFields): Promise<void> {
+  await db
+    .insert(deviceStatus)
+    .values({
+      deviceId: DEVICE_ID,
+      lastSeen: new Date(),
+      rssi: fields?.rssi,
+      voltageV: fields?.voltageV,
+      currentMa: fields?.currentMa,
+      tempC: fields?.tempC,
+      uptimeS: fields?.uptimeS,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: deviceStatus.deviceId,
+      set: {
+        lastSeen: new Date(),
+        rssi: fields?.rssi,
+        voltageV: fields?.voltageV,
+        currentMa: fields?.currentMa,
+        tempC: fields?.tempC,
+        uptimeS: fields?.uptimeS,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function markEsp32Online(fields?: DiagFields): Promise<void> {
+  await noteEsp32Contact(fields);
+  const nowIso = new Date().toISOString();
+  if (lastBroadcastOnline !== false && lastBroadcastOnline !== null) return;
+  lastBroadcastOnline = true;
+  wsBroadcaster.broadcast('esp32:status', { online: true, lastSeen: nowIso });
+  wsBroadcaster.broadcast('system:alert', {
+    text: 'ESP32 controller back online.',
+    severity: 'info',
+    category: 'ESP32_OFFLINE',
+    isPinned: false,
+  });
+}
+
+export async function getEsp32Status(): Promise<{ online: boolean; lastSeen: string | null }> {
+  const [row] = await db
+    .select({ lastSeen: deviceStatus.lastSeen })
+    .from(deviceStatus)
+    .where(eq(deviceStatus.deviceId, DEVICE_ID));
+
+  if (!row) return { online: false, lastSeen: null };
+
+  const ageMs = Date.now() - row.lastSeen.getTime();
+  const online = ageMs < OFFLINE_THRESHOLD_MS;
+  return { online, lastSeen: row.lastSeen.toISOString() };
 }
 
 export async function esp32HeartbeatJob(): Promise<void> {
-  const [row] = await db.select({ createdAt: sensorReadings.createdAt })
-    .from(sensorReadings)
-    .orderBy(desc(sensorReadings.createdAt))
-    .limit(1);
+  const [row] = await db
+    .select({ lastSeen: deviceStatus.lastSeen })
+    .from(deviceStatus)
+    .where(eq(deviceStatus.deviceId, DEVICE_ID));
 
-  const sensorTs = row?.createdAt ? new Date(row.createdAt).getTime() : 0;
-  const lastSeen = Math.max(sensorTs, lastContactAt);
-  const ageMs = Date.now() - lastSeen;
-  const online = lastSeen > 0 && ageMs < OFFLINE_THRESHOLD_MS;
+  const lastSeen = row?.lastSeen ?? null;
+  const ageMs = lastSeen ? Date.now() - lastSeen.getTime() : Infinity;
+  const online = lastSeen !== null && ageMs < OFFLINE_THRESHOLD_MS;
 
-  if (lastKnownOnline === online) return;
-  lastKnownOnline = online;
+  if (lastBroadcastOnline === online) return;
+  lastBroadcastOnline = online;
 
   wsBroadcaster.broadcast('esp32:status', {
     online,
-    lastSeen: row?.createdAt ?? null,
+    lastSeen: lastSeen?.toISOString() ?? null,
   });
 
   if (!online) {
@@ -46,23 +104,4 @@ export async function esp32HeartbeatJob(): Promise<void> {
       isPinned: false,
     });
   }
-}
-
-export function getEsp32Status(): { online: boolean; lastSeen: string | null } {
-  const lastSeen = lastContactAt > 0 ? new Date(lastContactAt).toISOString() : null;
-  const online = lastContactAt > 0 && Date.now() - lastContactAt < OFFLINE_THRESHOLD_MS;
-  return { online, lastSeen };
-}
-
-export function markEsp32Online(): void {
-  noteEsp32Contact();
-  if (lastKnownOnline === true) return;
-  lastKnownOnline = true;
-  wsBroadcaster.broadcast('esp32:status', { online: true, lastSeen: new Date().toISOString() });
-  wsBroadcaster.broadcast('system:alert', {
-    text: 'ESP32 controller back online.',
-    severity: 'info',
-    category: 'ESP32_OFFLINE',
-    isPinned: false,
-  });
 }

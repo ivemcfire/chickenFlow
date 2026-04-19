@@ -49,15 +49,19 @@ sensorRouter.post('/sensor', async (req, res, next) => {
       doorState: body.doorState,
     });
 
-    markEsp32Online();
+    await markEsp32Online();
     res.status(201).json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
-sensorRouter.get('/status', (_req, res) => {
-  res.json(getEsp32Status());
+sensorRouter.get('/status', async (_req, res, next) => {
+  try {
+    res.json(await getEsp32Status());
+  } catch (err) {
+    next(err);
+  }
 });
 
 sensorRouter.get('/latest', async (_req, res, next) => {
@@ -115,7 +119,7 @@ sensorRouter.post('/obstruction-check', (req, res) => {
 // and reminder chirps without ever issuing a POST to sync.
 sensorRouter.get('/command', async (_req, res, next) => {
   try {
-    markEsp32Online();
+    await markEsp32Online();
     const { action, serviceMode } = await db.transaction(async (tx) => {
       const [row] = await tx.select({
         pendingCommand: settings.pendingCommand,
@@ -166,7 +170,7 @@ sensorRouter.post('/manual-button', async (req, res, next) => {
       return;
     }
 
-    markEsp32Online();
+    await markEsp32Online();
 
     const [latest] = await db.select({ toState: doorEvents.toState })
       .from(doorEvents)

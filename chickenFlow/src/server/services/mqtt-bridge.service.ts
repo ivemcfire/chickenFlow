@@ -3,16 +3,12 @@ import { sql, eq, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   chickenCounts,
-  sensorReadings,
   doorEvents,
   settings,
 } from '../db/schema.js';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import {
-  markEsp32Online,
-  noteEsp32Contact,
-} from '../jobs/esp32-heartbeat.job.js';
-import { localDate } from '../util/local-date.js';
+import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
+import { localDate, tzOffsetMinutes } from '../util/local-date.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChickenFlow MQTT bridge
@@ -91,14 +87,14 @@ async function dispatch(topic: string, payload: Record<string, unknown>): Promis
 
 // ── coop/telemetry ───────────────────────────────────────────────────────────
 async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
-  noteEsp32Contact();
-  markEsp32Online();
-
-  const [cfg] = await db
-    .select({ totalChickens: settings.totalChickens })
-    .from(settings)
-    .where(eq(settings.id, 1));
-  const total = cfg?.totalChickens ?? 10;
+  const fields = {
+    rssi: typeof p['rssi'] === 'number' ? p['rssi'] : undefined,
+    voltageV: typeof p['v'] === 'number' ? p['v'] : undefined,
+    currentMa: typeof p['ma'] === 'number' ? p['ma'] : undefined,
+    tempC: typeof p['temp'] === 'number' ? p['temp'] : undefined,
+    uptimeS: typeof p['uptime_s'] === 'number' ? p['uptime_s'] : undefined,
+  };
+  await markEsp32Online(fields);
 
   const todayStr = localDate();
   const [countRow] = await db
@@ -113,16 +109,6 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
     .orderBy(desc(doorEvents.createdAt))
     .limit(1);
   const doorState = lastDoor?.toState ?? 'CLOSED';
-
-  await db.insert(sensorReadings).values({
-    topSensorTriggered: false,
-    irTriggered: false,
-    irATriggered: false,
-    irBTriggered: false,
-    chickensInside,
-    totalChickens: total,
-    doorState,
-  });
 
   wsBroadcaster.broadcast('sensor:reading', {
     topSensorTriggered: false,
@@ -228,10 +214,16 @@ export async function publishConfigRetained(): Promise<void> {
   if (!client || !client.connected) return;
 
   const [cfg] = await db.select().from(settings).where(eq(settings.id, 1));
+
+  if (cfg?.locationLat == null || cfg?.locationLon == null) {
+    console.log('[mqtt] cannot publish coop/config — settings.locationLat / locationLon not set');
+    return;
+  }
+
   const payload = JSON.stringify({
-    lat: cfg?.locationLat ?? 43.5167,
-    lon: cfg?.locationLon ?? 26.8333,
-    tz_offset_min: 120,
+    lat: cfg.locationLat,
+    lon: cfg.locationLon,
+    tz_offset_min: tzOffsetMinutes(),
     solar_nudge_min: 0,
     travel_ms_watchdog: 15000,
   });

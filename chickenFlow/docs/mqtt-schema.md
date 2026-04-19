@@ -32,8 +32,7 @@ Periodic health ping. Emitted every `MQTT_TELEMETRY_INTERVAL_MS` (60 s by defaul
 }
 ```
 
-Backend action: insert into `sensor_readings`, call `markEsp32Online()`,
-broadcast `sensor:reading` over WebSocket.
+Backend action: upsert `device_status` row (last_seen + diagnostic fields), broadcast `sensor:reading` over WebSocket.
 
 ---
 

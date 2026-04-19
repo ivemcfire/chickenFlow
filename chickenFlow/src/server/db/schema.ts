@@ -127,6 +127,19 @@ export const chickenCounts = pgTable('chicken_counts', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── device_status ─────────────────────────────────────────────────────────────
+// Heartbeat liveness + diagnostic snapshot, one row per device.
+export const deviceStatus = pgTable('device_status', {
+  deviceId: text('device_id').primaryKey(),
+  lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
+  rssi: integer('rssi'),
+  voltageV: doublePrecision('voltage_v'),
+  currentMa: integer('current_ma'),
+  tempC: doublePrecision('temp_c'),
+  uptimeS: integer('uptime_s'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ── camera_captures ───────────────────────────────────────────────────────────
 // IP cam (cam01) snapshot metadata. Non-anomaly pruned at 48h, anomaly at 30 days.
 export const cameraCaptures = pgTable('camera_captures', {
