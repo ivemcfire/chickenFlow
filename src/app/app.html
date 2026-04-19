@@ -4,7 +4,7 @@
     <!-- Left Column: Animation & Status -->
     <div class="lg:col-span-2 space-y-6">
       <header class="flex justify-between items-center">
-        <div class="flex items-center gap-3 cursor-pointer group/title select-none active:scale-95 transition-transform" (click)="toggleAbout()">
+        <div role="button" tabindex="0" class="flex items-center gap-3 cursor-pointer group/title select-none active:scale-95 transition-transform focus:outline-none" (click)="toggleAbout()" (keydown.enter)="toggleAbout()">
           <div class="w-10 h-10 bg-amber-500/10 rounded-xl border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/5 group-hover/title:border-amber-500/40 transition-colors">
             <span class="text-2xl">🐥</span>
           </div>
@@ -40,7 +40,7 @@
       </header>
 
       <!-- AI Status Report -->
-      <div class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[100px] flex flex-col group cursor-pointer" (click)="toggleFullLog()">
+      <div role="button" tabindex="0" class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[100px] flex flex-col group cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500/30" (click)="toggleFullLog()" (keydown.enter)="toggleFullLog()">
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-2">
             <mat-icon class="text-amber-500 text-sm">psychology</mat-icon>
@@ -301,167 +301,145 @@
           <mat-icon class="text-sm">tune</mat-icon>
           CHICKEN COOP SETTINGS
         </h3>
-        <div class="space-y-6">
-          <div>
-            <div class="flex justify-between text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-3">
-              <span>Total Chickens</span>
-              <span class="text-amber-400">{{ totalChickens() }}</span>
-            </div>
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-stone-400 uppercase tracking-widest">Total Chickens</span>
             <input type="number" [value]="totalChickens()" (change)="onTotalChickensChange($event)" [disabled]="serviceMode()"
-                   class="w-full bg-stone-900 border border-stone-800 rounded-lg px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                   class="w-16 bg-stone-900 border border-stone-800 rounded px-2 py-1 text-sm font-black text-amber-400 text-right focus:outline-none focus:border-amber-500/50 transition-all disabled:opacity-30">
           </div>
 
-          <div class="space-y-4 pt-2">
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-3 cursor-pointer group">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="manualOpenOverride()" (change)="toggleManualOpen()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-                </div>
-                <div class="flex flex-col">
-                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">DOOR OPEN</span>
-                  @if (autoCloseTime()) {
-                    <span class="text-[7px] text-amber-500 font-bold uppercase tracking-tighter animate-pulse">Auto-closing at {{ autoCloseTime() }}</span>
-                  }
-                  @if (weatherLock()) {
-                    <span class="text-[7px] text-red-500 font-bold uppercase tracking-tighter">Override Lockdown</span>
-                  }
-                </div>
-              </label>
-              <div class="relative w-6 h-6 flex items-center justify-center">
-                <mat-icon [class.text-amber-500]="manualOpenOverride()" 
-                          [class.animate-door-slide-horizontal]="manualOpenOverride()" 
-                          class="text-stone-700 text-lg transition-all">
-                  {{ manualOpenOverride() ? 'sensor_door' : 'door_front' }}
-                </mat-icon>
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="relative">
+                <input type="checkbox" class="sr-only peer" [checked]="manualOpenOverride()" (change)="toggleManualOpen()">
+                <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
               </div>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <button (click)="manualChickenReturn()" 
-                        [disabled]="isReturning()"
-                        class="relative w-10 h-5 bg-stone-800 rounded-full transition-all active:scale-95 disabled:opacity-50 overflow-hidden">
-                  <div class="absolute inset-0 bg-amber-600 transition-transform duration-300"
-                       [class.translate-x-0]="isReturning()"
-                       [class.-translate-x-full]="!isReturning()"></div>
-                  <div class="absolute top-[2px] left-[2px] bg-white rounded-full h-4 w-4 transition-all"
-                       [class.translate-x-5]="isReturning()"></div>
-                </button>
-                <div class="flex flex-col">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Chickens Sensors Reset</span>
-                    <button (click)="toggleResetInfo()" class="text-stone-600 hover:text-amber-500 transition-colors">
-                      <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
-                    </button>
-                  </div>
-                </div>
+              <div class="flex flex-col">
+                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">DOOR OPEN</span>
+                @if (autoCloseTime()) {
+                  <span class="text-[7px] text-amber-500 font-bold uppercase tracking-tighter animate-pulse">Auto-closing at {{ autoCloseTime() }}</span>
+                }
+                @if (weatherLock()) {
+                  <span class="text-[7px] text-red-500 font-bold uppercase tracking-tighter">Override Lockdown</span>
+                }
               </div>
-              <div class="text-lg" [class.animate-chicken-run]="isReturning()">
-                🐥
-              </div>
-            </div>
-
-            <!-- Reset Info Dialog -->
-            @if (showResetInfo()) {
-              <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                <p class="text-[10px] leading-relaxed text-red-200/80">
-                  <span class="font-bold text-red-500 uppercase">Warning:</span> This option will reset all counters and sensors. Please get all chickens back to the coop first.
-                </p>
-              </div>
-            }
-          </div>
-          
-          <div class="pt-2 space-y-4">
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-3 cursor-pointer group">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="smartNightLight()" (change)="toggleNightLight()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-                </div>
-                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Smart Night-Light</span>
-              </label>
-              <mat-icon [class.text-amber-500]="smartNightLight()" 
-                        [class.bulb-glow]="smartNightLight()" 
-                        [class.animate-pulse]="smartNightLight() && doorState() !== DoorState.ERROR" 
-                        [class.animate-rapid-flash]="smartNightLight() && doorState() === DoorState.ERROR"
+            </label>
+            <div class="relative w-6 h-6 flex items-center justify-center">
+              <mat-icon [class.text-amber-500]="manualOpenOverride()" 
+                        [class.animate-door-slide-horizontal]="manualOpenOverride()" 
                         class="text-stone-700 text-lg transition-all">
-                {{ smartNightLight() ? 'lightbulb' : 'lightbulb_outline' }}
+                {{ manualOpenOverride() ? 'sensor_door' : 'door_front' }}
               </mat-icon>
             </div>
-
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-3 cursor-pointer group">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="musicSignal()" (change)="toggleMusic()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
-                </div>
-                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Play Music Signal</span>
-              </label>
-              <mat-icon [class.text-amber-500]="musicSignal()" 
-                        [class.animate-music]="musicSignal() && doorState() !== DoorState.ERROR" 
-                        [class.animate-alert-pulse]="musicSignal() && doorState() === DoorState.ERROR"
-                        [class.text-red-500]="musicSignal() && doorState() === DoorState.ERROR"
-                        class="text-stone-700 text-lg transition-all">
-                {{ musicSignal() ? 'volume_up' : 'volume_off' }}
-              </mat-icon>
-            </div>
-
-            <div class="flex items-center justify-between">
-              <label class="flex items-center gap-3 cursor-pointer group">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="!cameraOnline()" (change)="toggleCamera()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-600"></div>
-                </div>
-                <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Simulate Feed Outage</span>
-              </label>
-              <mat-icon [class.text-orange-500]="!cameraOnline()" class="text-stone-700 text-lg transition-all">
-                {{ cameraOnline() ? 'videocam' : 'videocam_off' }}
-              </mat-icon>
-            </div>
-
-            <div class="flex items-center justify-between pt-2 border-t border-stone-800/50">
-              <label class="flex items-center gap-3 cursor-pointer group">
-                <div class="relative">
-                  <input type="checkbox" class="sr-only peer" [checked]="serviceMode()" (change)="toggleDisableAll()">
-                  <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
-                </div>
-                <div class="flex flex-col">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">SERVICE MODE</span>
-                    <button (click)="toggleDisableInfo(); $event.stopPropagation()" class="text-stone-600 hover:text-red-500 transition-colors">
-                      <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
-                    </button>
-                  </div>
-                </div>
-              </label>
-              <mat-icon [class.text-red-500]="serviceMode()" [class.animate-pulse]="serviceMode()" class="text-stone-700 text-lg transition-all">
-                power_settings_new
-              </mat-icon>
-            </div>
-
-            <!-- Disable All Info Dialog -->
-            @if (showDisableInfo()) {
-              <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                <p class="text-[10px] leading-relaxed text-red-200/80">
-                  <span class="font-bold text-red-500 uppercase">Service Mode:</span> this will disable all functions leaving only manual modes ON for testing or service
-                </p>
-              </div>
-            }
-
-            <!-- Mobile-Friendly Info Dialog -->
-            @if (showInfo()) {
-              <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                <p class="text-[10px] leading-relaxed text-amber-200/80">
-                  <span class="font-bold text-amber-500">SMART MODE:</span> System will automatically secure the coop when all chickens are detected inside. 
-                </p>
-              </div>
-            }
           </div>
+
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <button (click)="manualChickenReturn()" 
+                      [disabled]="isReturning()"
+                      class="relative w-10 h-5 bg-stone-800 rounded-full transition-all active:scale-95 disabled:opacity-50 overflow-hidden">
+                <div class="absolute inset-0 bg-amber-600 transition-transform duration-300"
+                     [class.translate-x-0]="isReturning()"
+                     [class.-translate-x-full]="!isReturning()"></div>
+                <div class="absolute top-[2px] left-[2px] bg-white rounded-full h-4 w-4 transition-all"
+                     [class.translate-x-5]="isReturning()"></div>
+              </button>
+              <div class="flex flex-col">
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Chickens Sensors Reset</span>
+                  <button (click)="toggleResetInfo()" class="text-stone-600 hover:text-amber-500 transition-colors">
+                    <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="text-lg" [class.animate-chicken-run]="isReturning()">
+              🐥
+            </div>
+          </div>
+
+          <!-- Reset Info Dialog -->
+          @if (showResetInfo()) {
+            <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 animate-in fade-in slide-in-from-top-2 duration-300">
+              <p class="text-[10px] leading-relaxed text-red-200/80">
+                <span class="font-bold text-red-500 uppercase">Warning:</span> This option will reset all counters and sensors. Please get all chickens back to the coop first.
+              </p>
+            </div>
+          }
+
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="relative">
+                <input type="checkbox" class="sr-only peer" [checked]="smartNightLight()" (change)="toggleNightLight()">
+                <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+              </div>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Smart Night-Light</span>
+            </label>
+            <mat-icon [class.text-amber-500]="smartNightLight()" 
+                      [class.bulb-glow]="smartNightLight()" 
+                      [class.animate-pulse]="smartNightLight() && doorState() !== DoorState.ERROR" 
+                      [class.animate-rapid-flash]="smartNightLight() && doorState() === DoorState.ERROR"
+                      class="text-stone-700 text-lg transition-all">
+              {{ smartNightLight() ? 'lightbulb' : 'lightbulb_outline' }}
+            </mat-icon>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="relative">
+                <input type="checkbox" class="sr-only peer" [checked]="musicSignal()" (change)="toggleMusic()">
+                <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+              </div>
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Play Music Signal</span>
+            </label>
+            <mat-icon [class.text-amber-500]="musicSignal()" 
+                      [class.animate-music]="musicSignal() && doorState() !== DoorState.ERROR" 
+                      [class.animate-alert-pulse]="musicSignal() && doorState() === DoorState.ERROR"
+                      [class.text-red-500]="musicSignal() && doorState() === DoorState.ERROR"
+                      class="text-stone-700 text-lg transition-all">
+              {{ musicSignal() ? 'volume_up' : 'volume_off' }}
+            </mat-icon>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-stone-800/50">
+            <label class="flex items-center gap-3 cursor-pointer group">
+              <div class="relative">
+                <input type="checkbox" class="sr-only peer" [checked]="serviceMode()" (change)="toggleDisableAll()">
+                <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+              </div>
+              <div class="flex flex-col">
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">SERVICE MODE</span>
+                  <button (click)="toggleDisableInfo(); $event.stopPropagation()" class="text-stone-600 hover:text-red-500 transition-colors">
+                    <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+                  </button>
+                </div>
+              </div>
+            </label>
+            <mat-icon [class.text-red-500]="serviceMode()" [class.animate-pulse]="serviceMode()" class="text-stone-700 text-lg transition-all">
+              power_settings_new
+            </mat-icon>
+          </div>
+
+          <!-- Info Dialogs -->
+          @if (showDisableInfo()) {
+            <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 animate-in fade-in slide-in-from-top-2 duration-300">
+              <p class="text-[10px] leading-relaxed text-red-200/80">
+                <span class="font-bold text-red-500 uppercase">Service Mode:</span> this will disable all functions leaving only manual modes ON for testing or service
+              </p>
+            </div>
+          }
+
+          @if (showInfo()) {
+            <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 animate-in fade-in slide-in-from-top-2 duration-300">
+              <p class="text-[10px] leading-relaxed text-amber-200/80">
+                <span class="font-bold text-amber-500">SMART MODE:</span> System will automatically secure the coop when all chickens are detected inside. 
+              </p>
+            </div>
+          }
         </div>
       </div>
     </div>
-  </div>
 
   <!-- Full Screen Log Modal (Phone Optimized) -->
   @if (showFullLog()) {
@@ -523,7 +501,7 @@
   <!-- About Modal -->
   @if (showAbout()) {
     <div class="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-in fade-in duration-300">
-      <div class="absolute inset-0 bg-stone-950/80 backdrop-blur-sm" (click)="toggleAbout()"></div>
+      <div role="button" aria-label="Close" tabindex="0" class="absolute inset-0 bg-stone-950/80 backdrop-blur-sm focus:outline-none" (click)="toggleAbout()" (keydown.enter)="toggleAbout()"></div>
       <div class="relative w-full max-w-sm glass-card p-8 text-center space-y-6 border-t-4 border-amber-500 shadow-2xl animate-in zoom-in-95 duration-300">
         <div class="flex justify-center mb-2">
           <div class="w-16 h-16 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-center justify-center">
@@ -547,4 +525,5 @@
       </div>
     </div>
   }
+</div>
 </div>

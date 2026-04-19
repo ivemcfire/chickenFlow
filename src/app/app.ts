@@ -116,8 +116,4 @@ export class App {
   refreshAI() {
     this.coopService.runAIAnalysis("Manual refresh requested.");
   }
-
-  toggleCamera() {
-    this.coopService.cameraOnline.update(v => !v);
-  }
 }
