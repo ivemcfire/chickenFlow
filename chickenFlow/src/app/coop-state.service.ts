@@ -56,8 +56,14 @@ export class CoopStateService {
   sunrise = signal<string>('06:00');
   sunset = signal<string>('18:00');
   irTriggered = signal<boolean>(false);
+  ir1 = signal<boolean>(false);
+  ir2 = signal<boolean>(false);
   systemOnline = signal<boolean>(false);
   backendOnline = signal<boolean>(true);
+  ldrOnline = signal<boolean>(true);
+  cameraOnline = signal<boolean>(true);
+  doorOpenTime = computed(() => this.offsetTime(this.sunrise(), 60));
+  doorCloseTime = computed(() => this.offsetTime(this.sunset(), 30));
   statusMessages = signal<StatusMessage[]>([]);
   isAnalyzing = signal<boolean>(false);
   herdingMode = signal<boolean>(false);
@@ -180,12 +186,18 @@ export class CoopStateService {
         case 'sensor:reading': {
           const p = msg.payload as { irTriggered: boolean; chickensInside: number; doorState: string };
           this.irTriggered.set(p.irTriggered);
+          // Mock: mirror the single ir flag onto both beam signals until firmware
+          // broadcasts per-beam state.
+          this.ir1.set(p.irTriggered);
+          this.ir2.set(p.irTriggered);
           this.systemOnline.set(true);
+          this.ldrOnline.set(true);
           break;
         }
         case 'esp32:status': {
           const p = msg.payload as { online: boolean };
           this.systemOnline.set(p.online);
+          this.ldrOnline.set(p.online);
           if (!p.online) {
             this.notifyEsp32Offline();
           } else {
@@ -312,6 +324,14 @@ export class CoopStateService {
     const d = new Date(baseDate);
     d.setHours(hours, minutes, 0, 0);
     return d;
+  }
+
+  private offsetTime(timeStr: string, offsetMinutes: number): string {
+    const [h, m] = timeStr.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h || 0, m || 0, 0, 0);
+    d.setMinutes(d.getMinutes() + offsetMinutes);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   // ── Weather (from backend cache) ──────────────────────────────────────────
@@ -492,8 +512,8 @@ export class CoopStateService {
     const BUFFER = 24;
     const SAFE_X_MIN = FRAME_X_LEFT - BUFFER;
     const SAFE_X_MAX = FRAME_X_RIGHT + BUFFER;
-    const DOOR_Y_MIN = 60;
-    const DOOR_Y_MAX = 130;
+    const DOOR_Y_MIN = 70;
+    const DOOR_Y_MAX = 134;
 
     this.chickens.update(prev => {
       const next = prev.map(c => ({ ...c }));

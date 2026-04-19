@@ -74,6 +74,12 @@ export class App implements OnInit, OnDestroy {
   startTime = this.coopService.startTime;
   systemOnline = this.coopService.systemOnline;
   backendOnline = this.coopService.backendOnline;
+  ldrOnline = this.coopService.ldrOnline;
+  cameraOnline = this.coopService.cameraOnline;
+  ir1 = this.coopService.ir1;
+  ir2 = this.coopService.ir2;
+  doorOpenTime = this.coopService.doorOpenTime;
+  doorCloseTime = this.coopService.doorCloseTime;
   headerStatusLine = computed(() => {
     if (!this.backendOnline()) return 'NO CONNECTION TO THE SERVER';
     if (!this.systemOnline()) return 'NO CONNECTION TO THE COOP CONTROLLER';
@@ -193,9 +199,11 @@ export class App implements OnInit, OnDestroy {
 
   onCamError() {
     this.camError.set(true);
+    this.coopService.cameraOnline.set(false);
   }
 
   onCamLoad() {
     this.camError.set(false);
+    this.coopService.cameraOnline.set(true);
   }
 }
