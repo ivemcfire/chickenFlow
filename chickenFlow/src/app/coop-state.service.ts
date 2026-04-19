@@ -58,9 +58,13 @@ export class CoopStateService {
   irTriggered = signal<boolean>(false);
   ir1 = signal<boolean>(false);
   ir2 = signal<boolean>(false);
+  lastTunnelDirection = signal<'IN' | 'OUT' | null>(null);
+  lightLevel = signal<number | null>(null);
   systemOnline = signal<boolean>(false);
   backendOnline = signal<boolean>(true);
-  ldrOnline = signal<boolean>(true);
+  // LDR is "functioning" when we've received a numeric lightLevel from the ESP32
+  // AND the backend hasn't pinned an LDR_FAILSAFE alert. Default false until proven.
+  ldrOnline = signal<boolean>(false);
   cameraOnline = signal<boolean>(true);
   doorOpenTime = computed(() => this.offsetTime(this.sunrise(), 60));
   doorCloseTime = computed(() => this.offsetTime(this.sunset(), 30));
@@ -184,21 +188,35 @@ export class CoopStateService {
           break;
         }
         case 'sensor:reading': {
-          const p = msg.payload as { irTriggered: boolean; chickensInside: number; doorState: string };
+          const p = msg.payload as {
+            irTriggered: boolean;
+            irATriggered?: boolean;
+            irBTriggered?: boolean;
+            chickensInside: number;
+            doorState: string;
+            direction?: 'IN' | 'OUT';
+            lightLevel?: number;
+          };
           this.irTriggered.set(p.irTriggered);
-          // Mock: mirror the single ir flag onto both beam signals until firmware
-          // broadcasts per-beam state.
-          this.ir1.set(p.irTriggered);
-          this.ir2.set(p.irTriggered);
+          this.ir1.set(p.irATriggered ?? p.irTriggered);
+          this.ir2.set(p.irBTriggered ?? p.irTriggered);
+          if (p.direction === 'IN' || p.direction === 'OUT') {
+            this.lastTunnelDirection.set(p.direction);
+          }
+          if (typeof p.lightLevel === 'number') {
+            this.lightLevel.set(p.lightLevel);
+            this.ldrOnline.set(true);
+          }
           this.systemOnline.set(true);
-          this.ldrOnline.set(true);
           break;
         }
         case 'esp32:status': {
           const p = msg.payload as { online: boolean };
           this.systemOnline.set(p.online);
-          this.ldrOnline.set(p.online);
+          // When the ESP32 drops offline the LDR can't be functioning either.
+          // Do NOT flip LDR green on ESP32 online — wait for an actual reading.
           if (!p.online) {
+            this.ldrOnline.set(false);
             this.notifyEsp32Offline();
           } else {
             this.unpinCategory('ESP32_OFFLINE');
@@ -224,6 +242,9 @@ export class CoopStateService {
           break;
         case 'system:alert': {
           const p = msg.payload as { text: string; severity: string; category?: string; isPinned?: boolean };
+          if (p.category === 'LDR_FAILSAFE' && p.isPinned) {
+            this.ldrOnline.set(false);
+          }
           this.addStatusMessage(p.text, p.severity === 'error', p.isPinned ?? false, p.category, p.severity === 'error');
           break;
         }

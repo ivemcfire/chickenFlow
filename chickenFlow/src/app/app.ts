@@ -78,6 +78,8 @@ export class App implements OnInit, OnDestroy {
   cameraOnline = this.coopService.cameraOnline;
   ir1 = this.coopService.ir1;
   ir2 = this.coopService.ir2;
+  lastTunnelDirection = this.coopService.lastTunnelDirection;
+  lightLevel = this.coopService.lightLevel;
   doorOpenTime = this.coopService.doorOpenTime;
   doorCloseTime = this.coopService.doorCloseTime;
   headerStatusLine = computed(() => {

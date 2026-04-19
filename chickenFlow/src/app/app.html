@@ -65,7 +65,6 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-[10px] font-bold text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">View Full Log</span>
             <button (click)="$event.stopPropagation(); refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group/btn disabled:opacity-30 disabled:cursor-not-allowed">
               <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover/btn:text-amber-500">refresh</mat-icon>
             </button>
@@ -233,7 +232,8 @@
         </div>
         <div class="glass-card p-4 text-center relative overflow-hidden group">
           <div class="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">COOP CYCLE</p>
+          <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest">COOP CYCLE</p>
+          <p class="text-[8px] text-amber-500/70 font-medium italic mb-1" title="Estimated from sunrise + 60 min and sunset + 30 min">ESTIMATED</p>
           <div class="flex items-center justify-center gap-3">
             <div class="flex flex-col items-center">
               <mat-icon class="text-xs text-amber-500">wb_sunny</mat-icon>
@@ -259,15 +259,21 @@
         <div class="glass-card p-4 text-center flex flex-col justify-center items-center gap-2">
           <p class="text-[10px] text-stone-500 font-bold uppercase tracking-widest mb-1">DUAL IR SENSORS</p>
           <div class="flex items-center gap-6">
-            <div class="flex flex-col items-center">
+            <div class="flex flex-col items-center gap-1">
               <div [class]="'w-3 h-3 rounded-full ' + (ir1() ? 'bg-orange-500 animate-pulse' : 'bg-stone-700')"></div>
+              <span [class]="'text-[9px] font-black tracking-widest ' + (ir1() ? 'text-orange-400' : 'text-stone-600')">IR1</span>
             </div>
-            <div class="flex flex-col items-center">
+            <div class="flex flex-col items-center gap-1">
               <div [class]="'w-3 h-3 rounded-full ' + (ir2() ? 'bg-orange-500 animate-pulse' : 'bg-stone-700')"></div>
+              <span [class]="'text-[9px] font-black tracking-widest ' + (ir2() ? 'text-orange-400' : 'text-stone-600')">IR2</span>
             </div>
           </div>
-          <div class="mt-2">
-            @if (insideCount() >= totalChickens()) {
+          <div class="mt-1 min-h-[14px]">
+            @if (lastTunnelDirection(); as dir) {
+              <span [class]="'text-[9px] font-black uppercase tracking-widest ' + (dir === 'IN' ? 'text-emerald-400' : 'text-amber-400')">
+                {{ dir === 'IN' ? '→ IN' : 'OUT →' }}
+              </span>
+            } @else if (insideCount() >= totalChickens()) {
               <span class="text-xs font-black text-green-500">MAX CAPACITY</span>
             }
           </div>
@@ -338,13 +344,10 @@
           CHICKEN COOP SETTINGS
         </h3>
         <div class="space-y-6">
-          <div>
-            <div class="flex justify-between text-[10px] font-bold text-stone-500 uppercase tracking-widest mb-3">
-              <span>Total Chickens</span>
-              <span class="text-amber-400">{{ totalChickens() }}</span>
-            </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Total Chickens</span>
             <input type="number" [value]="totalChickens()" (change)="onTotalChickensChange($event)" [disabled]="serviceMode()"
-                   class="w-full bg-stone-900 border border-stone-800 rounded-lg px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                   class="w-20 bg-stone-900 border border-stone-800 rounded-lg px-3 py-1.5 text-sm text-amber-400 font-bold text-right focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
           </div>
 
           <div class="space-y-4 pt-2">
