@@ -12,10 +12,15 @@
 // Safety:    Dual limit switches + INA219 stall current + dual IR tunnel.
 
 // ── Pin assignments ───────────────────────────────────────────────────────────
-// Motor (L298N H-bridge)
-#define PIN_MOTOR_OPEN         5    // IN1 — HIGH = open direction
-#define PIN_MOTOR_CLOSE        7    // IN2 — HIGH = close direction
-#define PIN_MOTOR_PWM          6    // ENA — LEDC PWM for soft-start/stop
+// Motor (BTS7960 H-bridge, driven by 12V rail from Xbox 360 150W PSU)
+#define PIN_BTS_EN             5    // L_EN + R_EN tied together. HIGH = bridge live.
+#define PIN_BTS_RPWM           6    // Forward (OPEN direction) PWM
+#define PIN_BTS_LPWM           7    // Reverse (CLOSE direction) PWM
+
+// Xbox 360 PSU wake — drives PC817 optocoupler that bridges 5V SB → Blue enable.
+// Active HIGH: GPIO HIGH → optocoupler closed → +5V applied to Blue wire →
+// PSU main 12V rail comes up (green LED, fan on). GPIO LOW → PSU sleeps.
+#define PIN_PSU_ON            17
 
 // Limit switches (NO, INPUT_PULLUP: LOW when triggered)
 #define PIN_LIMIT_TOP         12    // LOW = door fully open
@@ -42,7 +47,9 @@
 // UI / alerts
 #define PIN_BUZZER            14    // Passive buzzer — LEDC PWM
 #define PIN_LED_STATUS        15
-#define PIN_COOP_LIGHT        16    // Service-mode indicator LED (HIGH = serviceMode on)
+// 12V warning lamp driven by XY-MOS low-side module. Wakes only when the PSU
+// is awake (see docs/wiring.md §6) — audio reminder handles service-mode.
+#define PIN_LAMP              18
 
 // Manual override button — NO, wired between GPIO and GND (INPUT_PULLUP).
 // 5s press  = door OPEN for 15 min (override), two short chirps.
@@ -58,7 +65,10 @@
 #define LEDC_BUZZER_RESOLUTION  8
 #define LEDC_BUZZER_FREQ_INIT   2000
 
-#define LEDC_MOTOR_CHANNEL      1
+// BTS7960 needs a PWM channel per direction pin (RPWM and LPWM).
+// When idling, both channels write 0. Active brake = both 0 with EN HIGH.
+#define LEDC_MOTOR_RPWM_CHANNEL 1
+#define LEDC_MOTOR_LPWM_CHANNEL 2
 #define LEDC_MOTOR_RESOLUTION   8       // 0..255 duty
 #define LEDC_MOTOR_FREQ         20000   // 20 kHz — above audible range
 
@@ -66,6 +76,17 @@
 #define MOTOR_DUTY_MAX          255
 #define MOTOR_RAMP_UP_MS        1000    // Linear accel — long enough to mask INA219 inrush
 #define MOTOR_RAMP_DOWN_MS       500    // Short decel — precise stop at limit switches
+
+// ── PSU wake / brake ─────────────────────────────────────────────────────────
+// After setting PIN_PSU_ON HIGH, wait PSU_WAKE_MS for the 12V rail to come up.
+// Then sample INA219 bus voltage — if below PSU_WAKE_MIN_V the wake failed.
+#define PSU_WAKE_MS              500
+#define PSU_WAKE_MIN_V           10.0f  // Minimum bus voltage post-wake (nominal 12V)
+
+// Active brake: EN stays HIGH with both PWM channels at 0, shorting motor coils
+// to dump kinetic energy. Prevents gravity-drop when the door weight tries to
+// unspool the drill motor. After this window, release EN and sleep the PSU.
+#define MOTOR_BRAKE_MS           250
 
 // ── Musical note frequencies (Hz) ────────────────────────────────────────────
 #define NOTE_C4   262
@@ -121,6 +142,11 @@
 #define INA219_SAMPLE_WINDOW_MS     100    // Rolling window
 #define INA219_INRUSH_MASK_MS      1100    // Ignore stall during ramp-up
 
+// Derived trip point — midpoint between free-run and stall. Override from
+// coop/config when bench values are recorded.
+#define INA219_STALL_THRESHOLD_MA \
+  ((INA219_FREERUN_MA_DEFAULT + INA219_STALL_MA_DEFAULT) / 2)
+
 // ── IR tunnel (directional counting + safety) ────────────────────────────────
 // A = yard side, B = coop side.
 //   A→B = IN  (yard → coop)
@@ -133,18 +159,25 @@
 #define OBSTRUCTION_WAIT_MS    30000     // Wait before retry
 #define OBSTRUCTION_BUZZ_MS     3000     // Clear-the-tunnel buzzer duration
 
-// ── HTTP API fallback (used until MQTT migration is complete) ─────────────
-// Server base URL — MetalLB or NodePort
-#define SERVER_BASE        "http://192.168.100.211"
-#define API_SENSOR         SERVER_BASE "/api/esp32/sensor"
-#define API_COMMAND        SERVER_BASE "/api/esp32/command"
-#define API_DOOR_EVENT     SERVER_BASE "/api/esp32/door-event"
-#define API_OBSTRUCTION_CHECK  SERVER_BASE "/api/esp32/obstruction-check"
+// ── MQTT client tuning ───────────────────────────────────────────────────
+// PubSubClient buffer must fit the largest telemetry payload. 512 is plenty
+// for the current schema (well under 300 bytes serialized).
+#define MQTT_BUFFER_SIZE         512
 
-#define COMMAND_POLL_MS           5000
-#define SENSOR_POST_MS           10000
-#define HTTP_TIMEOUT_MS           5000
-#define OBSTRUCTION_CHECK_TIMEOUT_MS 10000
+// Reconnect backoff: after a failed connect attempt, wait this long before
+// retrying. Keeps the loop tickling at ~1 attempt every 5s without blocking.
+#define MQTT_RECONNECT_MS       5000
+
+// Non-blocking publish queue — depth of the in-memory FIFO that holds outgoing
+// messages when the broker is unreachable. Sized for one full telemetry cycle
+// plus ~8 event bursts. Overflow drops the oldest entry.
+#define MQTT_QUEUE_SIZE           16
+#define MQTT_QUEUE_PAYLOAD_BYTES 320
+
+// Autonomy fallback — if MQTT has been disconnected for this long, the
+// firmware's own DS3231 + Dusk2Dawn schedule is authoritative for open/close.
+// Prevents the coop from staying locked when the broker is down for hours.
+#define MQTT_AUTONOMY_GRACE_MS  300000   // 5 minutes
 
 // ── Status LED timing ───────────────────────────────────────────────────
 #define LED_BLINK_CONNECTING_MS    80   // Rapid blink half-period during WiFi connect

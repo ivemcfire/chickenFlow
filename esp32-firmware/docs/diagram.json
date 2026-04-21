@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "author": "ChickenFlow",
+  "editor": "wokwi",
+  "_note": "LOLIN ESP32-S2 Mini stand-in using Wokwi's ESP32-S2 DevKitC-1. Pin map matches chickenflow-esp32-s2/src/config.h. IR beams and limit switches are simulated with push-buttons (NO to GND, internal pull-up).",
+  "parts": [
+    { "type": "board-esp32-s2-devkitc-1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+
+    { "type": "wokwi-l298n", "id": "l298n", "top": -200, "left": 300, "attrs": {} },
+    { "type": "wokwi-dc-motor", "id": "motor", "top": -260, "left": 520, "attrs": { "label": "Door winch 12V" } },
+
+    { "type": "wokwi-pushbutton", "id": "sw_top",    "top": 120,  "left": -240, "attrs": { "color": "green",  "label": "LIMIT TOP (NO)" } },
+    { "type": "wokwi-pushbutton", "id": "sw_bottom", "top": 200,  "left": -240, "attrs": { "color": "red",    "label": "LIMIT BOTTOM (NO)" } },
+
+    { "type": "wokwi-pushbutton", "id": "ir_a", "top": 300,  "left": -240, "attrs": { "color": "yellow", "label": "IR BEAM A (yard)" } },
+    { "type": "wokwi-pushbutton", "id": "ir_b", "top": 380,  "left": -240, "attrs": { "color": "yellow", "label": "IR BEAM B (coop)" } },
+
+    { "type": "wokwi-pushbutton", "id": "btn_manual", "top": 500,  "left": -240, "attrs": { "color": "blue",   "label": "MANUAL OVERRIDE" } },
+
+    { "type": "wokwi-photoresistor-sensor", "id": "ldr", "top": 100, "left": 300, "attrs": {} },
+
+    { "type": "wokwi-buzzer", "id": "buzzer",   "top": 250, "left": 300, "attrs": { "volume": "0.1" } },
+    { "type": "wokwi-led",    "id": "led_stat", "top": 320, "left": 330, "attrs": { "color": "green", "label": "STATUS" } },
+    { "type": "wokwi-resistor","id": "r_stat",   "top": 320, "left": 260, "attrs": { "value": "330" } },
+    { "type": "wokwi-led",    "id": "led_svc",  "top": 380, "left": 330, "attrs": { "color": "yellow","label": "SERVICE" } },
+    { "type": "wokwi-resistor","id": "r_svc",    "top": 380, "left": 260, "attrs": { "value": "330" } },
+
+    { "type": "board-ds1307", "id": "rtc",    "top": -100, "left": -260, "attrs": {} },
+    { "type": "wokwi-ina219", "id": "ina219", "top": 0,    "left": -260, "attrs": {} },
+    { "type": "wokwi-bme280", "id": "bme280", "top": 100,  "left": -260, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:5",  "l298n:IN1", "green",  [ "h20", "v-60" ] ],
+    [ "esp:7",  "l298n:IN2", "green",  [ "h20", "v-60" ] ],
+    [ "esp:6",  "l298n:EN1", "orange", [ "h20", "v-60" ] ],
+    [ "l298n:OUT1", "motor:1", "red",   [ "h40" ] ],
+    [ "l298n:OUT2", "motor:2", "black", [ "h40" ] ],
+    [ "l298n:GND", "esp:GND.1", "black", [ "v20", "h-100" ] ],
+    [ "l298n:12V", "esp:VIN",   "red",   [ "v40", "h-60" ] ],
+
+    [ "sw_top:1.l",    "esp:12", "green", [ "h10" ] ],
+    [ "sw_top:2.l",    "esp:GND.2", "black", [ "h-20", "v40" ] ],
+    [ "sw_bottom:1.l", "esp:8",  "red",   [ "h10" ] ],
+    [ "sw_bottom:2.l", "esp:GND.2", "black", [ "h-20", "v40" ] ],
+
+    [ "ir_a:1.l", "esp:9",  "gold", [ "h10" ] ],
+    [ "ir_a:2.l", "esp:GND.2", "black", [ "h-20", "v40" ] ],
+    [ "ir_b:1.l", "esp:10", "gold", [ "h10" ] ],
+    [ "ir_b:2.l", "esp:GND.2", "black", [ "h-20", "v40" ] ],
+
+    [ "btn_manual:1.l", "esp:13", "blue",  [ "h10" ] ],
+    [ "btn_manual:2.l", "esp:GND.2", "black", [ "h-20", "v40" ] ],
+
+    [ "ldr:VCC", "esp:3V3", "red",   [ "h20", "v-60" ] ],
+    [ "ldr:GND", "esp:GND.1", "black", [ "h20", "v-40" ] ],
+    [ "ldr:AO",  "esp:4",   "purple",[ "h20", "v-20" ] ],
+
+    [ "buzzer:1", "esp:14", "magenta", [ "h10" ] ],
+    [ "buzzer:2", "esp:GND.2", "black", [ "v20" ] ],
+
+    [ "esp:15", "r_stat:1", "green", [ "h20" ] ],
+    [ "r_stat:2", "led_stat:A", "green", [ "h10" ] ],
+    [ "led_stat:C", "esp:GND.2", "black", [ "v20", "h-80" ] ],
+
+    [ "esp:16", "r_svc:1", "gold", [ "h20" ] ],
+    [ "r_svc:2", "led_svc:A", "gold", [ "h10" ] ],
+    [ "led_svc:C", "esp:GND.2", "black", [ "v20", "h-80" ] ],
+
+    [ "esp:33", "rtc:SDA",    "purple", [ "h-20", "v-40" ] ],
+    [ "esp:35", "rtc:SCL",    "yellow", [ "h-20", "v-40" ] ],
+    [ "rtc:VCC", "esp:3V3",   "red",    [ "v-20", "h100" ] ],
+    [ "rtc:GND", "esp:GND.1", "black",  [ "v20",  "h100" ] ],
+
+    [ "esp:33", "ina219:SDA", "purple", [ "h-20", "v-20" ] ],
+    [ "esp:35", "ina219:SCL", "yellow", [ "h-20", "v-20" ] ],
+    [ "ina219:VCC", "esp:3V3",   "red",   [ "h-20" ] ],
+    [ "ina219:GND", "esp:GND.1", "black", [ "h-20", "v20" ] ],
+
+    [ "esp:33", "bme280:SDA", "purple", [ "h-20", "v20" ] ],
+    [ "esp:35", "bme280:SCL", "yellow", [ "h-20", "v20" ] ],
+    [ "bme280:VCC", "esp:3V3",   "red",   [ "h-20" ] ],
+    [ "bme280:GND", "esp:GND.1", "black", [ "h-20", "v20" ] ]
+  ],
+  "dependencies": {}
+}

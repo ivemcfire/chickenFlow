@@ -107,6 +107,12 @@ void musicTick() {
   }
 }
 
+void musicStop() {
+  playingGoT = false;
+  noteIsPlaying = false;
+  stopTone();
+}
+
 void startGoTTheme(uint32_t durationMs) {
   if (!buzzerReadyInternal) {
     return;
