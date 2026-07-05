@@ -3,7 +3,8 @@ import { db } from '../db/index.js';
 import { doorEvents } from '../db/schema.js';
 import { desc } from 'drizzle-orm';
 import { getDoorState, requestDoorCommand } from '../services/door-state.service.js';
-import type { DoorCommandRequest } from './types.js';
+import { validate } from '../middleware/validate.js';
+import { doorCommandSchema, type DoorCommandBody } from './schemas.js';
 
 export const doorEventsRouter = Router();
 
@@ -30,14 +31,9 @@ doorEventsRouter.get('/events', async (req, res, next) => {
 // Requests a door move over MQTT. The device confirms via coop/door/status —
 // door_events is only written when that confirmation arrives, so a dark
 // device means no fake OPENING/CLOSING rows.
-doorEventsRouter.post('/command', async (req, res, next) => {
+doorEventsRouter.post('/command', validate(doorCommandSchema), async (req, res, next) => {
   try {
-    const body = req.body as DoorCommandRequest;
-    if (!body.command || !['OPEN', 'CLOSE'].includes(body.command)) {
-      res.status(400).json({ error: 'BadRequest', message: 'command must be OPEN or CLOSE', statusCode: 400 });
-      return;
-    }
-
+    const body = req.body as DoorCommandBody;
     const trigger = body.trigger ?? 'manual';
     const result = await requestDoorCommand(body.command, trigger, {
       manualOverride: trigger === 'manual',

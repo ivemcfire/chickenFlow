@@ -6,6 +6,7 @@ import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
 import { localDate, tzOffsetMinutes } from '../util/local-date.js';
 import { getDoorState, recordDeviceTransition } from './door-state.service.js';
+import { mqttTelemetrySchema, mqttCountSchema, mqttDoorStatusSchema } from '../api/schemas.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChickenFlow MQTT bridge
@@ -126,14 +127,21 @@ async function dispatch(topic: string, payload: Record<string, unknown>): Promis
 }
 
 // ── coop/telemetry ───────────────────────────────────────────────────────────
-async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
+async function handleTelemetry(raw: Record<string, unknown>): Promise<void> {
+  const parsed = mqttTelemetrySchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn(`[mqtt] dropping malformed coop/telemetry payload: ${parsed.error.message}`);
+    return;
+  }
+  const p = parsed.data;
+
   const fields = {
-    rssi: typeof p['rssi'] === 'number' ? p['rssi'] : undefined,
-    voltageV: typeof p['v'] === 'number' ? p['v'] : undefined,
-    currentMa: typeof p['ma'] === 'number' ? p['ma'] : undefined,
-    tempC: typeof p['temp'] === 'number' ? p['temp'] : undefined,
-    uptimeS: typeof p['uptime_s'] === 'number' ? p['uptime_s'] : undefined,
-    lightLevel: typeof p['lightLevel'] === 'number' ? p['lightLevel'] : undefined,
+    rssi: p.rssi,
+    voltageV: p.v,
+    currentMa: p.ma,
+    tempC: p.temp,
+    uptimeS: p.uptime_s,
+    lightLevel: p.lightLevel,
   };
   await markEsp32Online(fields);
 
@@ -158,14 +166,15 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
 }
 
 // ── coop/count ───────────────────────────────────────────────────────────────
-async function handleCount(p: Record<string, unknown>): Promise<void> {
-  const dir = p['dir'];
-  if (dir !== 'IN' && dir !== 'OUT') {
-    console.warn(`[mqtt] dropping count with invalid dir=${String(dir)}`);
+async function handleCount(raw: Record<string, unknown>): Promise<void> {
+  const parsed = mqttCountSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn(`[mqtt] dropping malformed coop/count payload: ${parsed.error.message}`);
     return;
   }
+  const { dir, ts } = parsed.data;
 
-  const eventInstant = typeof p['ts'] === 'string' ? new Date(p['ts']) : new Date();
+  const eventInstant = ts ? new Date(ts) : new Date();
   const dateKey = localDate(isNaN(eventInstant.getTime()) ? new Date() : eventInstant);
 
   const isEntry = dir === 'IN';
@@ -201,20 +210,21 @@ async function handleCount(p: Record<string, unknown>): Promise<void> {
 }
 
 // ── coop/door/status ─────────────────────────────────────────────────────────
-async function handleDoorStatus(p: Record<string, unknown>): Promise<void> {
-  const toState = typeof p['state'] === 'string' ? p['state'] : null;
-  if (!toState) {
-    console.warn('[mqtt] dropping door/status without state field');
+async function handleDoorStatus(raw: Record<string, unknown>): Promise<void> {
+  const parsed = mqttDoorStatusSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn(`[mqtt] dropping malformed coop/door/status payload: ${parsed.error.message}`);
     return;
   }
+  const { state, from_state, last_event } = parsed.data;
 
   const recorded = await recordDeviceTransition({
-    toState,
-    fromState: typeof p['from_state'] === 'string' ? p['from_state'] : undefined,
-    trigger: typeof p['last_event'] === 'string' ? p['last_event'] : undefined,
+    toState: state,
+    fromState: from_state,
+    trigger: last_event,
   });
   if (!recorded) {
-    console.log(`[mqtt] ignoring duplicate door/status for state=${toState}`);
+    console.log(`[mqtt] ignoring duplicate door/status for state=${state}`);
   }
 }
 

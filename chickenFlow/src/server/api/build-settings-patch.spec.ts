@@ -1,5 +1,5 @@
 import { buildSettingsPatch } from './build-settings-patch';
-import type { ApiSettings } from './types';
+import type { SettingsPatchBody } from './schemas';
 
 describe('buildSettingsPatch', () => {
   const fixedNow = new Date('2026-04-13T12:00:00Z');
@@ -51,11 +51,16 @@ describe('buildSettingsPatch', () => {
     });
   });
 
-  it('ignores keys outside the ApiSettings patch surface', () => {
+  it('ignores keys outside the settings patch surface', () => {
     const patch = buildSettingsPatch(
-      { serviceMode: true, bogus: 'CLOSE' } as Partial<ApiSettings>,
+      { serviceMode: true, bogus: 'CLOSE' } as SettingsPatchBody,
       fixedNow,
     );
     expect(patch['bogus']).toBeUndefined();
+  });
+
+  it('includes lightThreshold when present', () => {
+    const patch = buildSettingsPatch({ lightThreshold: 2500 }, fixedNow);
+    expect(patch['lightThreshold']).toBe(2500);
   });
 });

@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { db } from '../db/index.js';
 import { settings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import type { ApiSettings } from './types.js';
 import { buildSettingsPatch } from './build-settings-patch.js';
+import { validate } from '../middleware/validate.js';
+import { settingsPatchSchema, type SettingsPatchBody } from './schemas.js';
 
 export const settingsRouter = Router();
 
@@ -23,9 +24,9 @@ settingsRouter.get('/', async (_req, res, next) => {
   }
 });
 
-settingsRouter.put('/', async (req, res, next) => {
+settingsRouter.put('/', validate(settingsPatchSchema), async (req, res, next) => {
   try {
-    const body = req.body as Partial<ApiSettings>;
+    const body = req.body as SettingsPatchBody;
 
     // Ensure the single row exists so UPDATE can target it.
     await db.insert(settings).values({ id: 1 }).onConflictDoNothing();

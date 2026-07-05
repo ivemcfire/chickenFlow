@@ -1,6 +1,7 @@
 import { db } from '../db/index.js';
 import { aiAnalysisLog } from '../db/schema.js';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
+import { stripJsonFences } from './strip-json-fences.js';
 import type { AiAnalyzeResponse } from '../api/types.js';
 
 export interface CoopTelemetry {
@@ -15,6 +16,12 @@ export interface CoopTelemetry {
   contextNote?: string;
   sunriseLocal?: string;
   sunsetLocal?: string;
+  // Device diagnostics from device_status (coop/telemetry via MQTT)
+  deviceRssi?: number;
+  deviceVoltageV?: number;
+  deviceTempC?: number;
+  deviceLightLevel?: number;
+  deviceLastSeen?: string;
 }
 
 const TELEMETRY_SYSTEM_PROMPT = `You are ChickenFlow-AI, the monitoring intelligence for an automated chicken coop door system.
@@ -29,14 +36,21 @@ Rules:
 - If door is ERROR: mention possible obstruction or motor fault.
 - If weather_lock is true: always reference safety confinement.
 - If service_mode is true: note that automated systems are paused.
+- If device diagnostics show rssi weaker than -80, voltage below 10.5, or temp above 45: prefix with "WARNING:" and name the specific reading.
 - If all of: chickens_inside == total_chickens, door_state == "CLOSED", weather_lock false, service_mode false, no error — then brief factual reassurance is allowed. Otherwise state the situation plainly.
 - Never mention API keys, model names, or implementation details.
 - Only reference values present in the telemetry JSON.`;
 
-interface OllamaGenerateResponse {
-  response: string;
-  prompt_eval_count?: number;
-  eval_count?: number;
+interface GeminiGenerateResponse {
+  candidates?: {
+    content?: {
+      parts?: { text?: string }[];
+    };
+  }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+  };
 }
 
 interface GenerateResult {
@@ -45,53 +59,67 @@ interface GenerateResult {
   completionTokens: number;
 }
 
-async function ollamaGenerate(opts: {
+// Logged at most once — an hourly cron job with a missing key would otherwise
+// fill the logs with the same warning forever.
+let hasWarnedMissingKey = false;
+
+async function geminiGenerate(opts: {
   system: string;
   prompt: string;
   maxTokens: number;
 }): Promise<GenerateResult> {
-  const ollamaUrl = process.env['OLLAMA_URL'] ?? 'http://ollama.chickenflow.svc.cluster.local:11434';
-  const ollamaModel = process.env['OLLAMA_MODEL'] ?? 'qwen2.5:3b-instruct-q4_K_M';
+  const apiKey = process.env['GEMINI_API_KEY'];
+  const model = process.env['GEMINI_MODEL'] ?? 'gemini-2.5-flash';
 
-  const resp = await fetch(`${ollamaUrl}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: ollamaModel,
-      system: opts.system,
-      prompt: opts.prompt,
-      stream: false,
-      // Qwen3 hybrid reasoning: disable chain-of-thought for this
-      // short-form deterministic telemetry narration. Saves tokens + heat.
-      think: false,
-      // Keep the model resident for longer than one cron interval (`3 * * * *`)
-      // so the hourly call finds a warm model instead of paying ~25s cold-load.
-      // Default Ollama keep_alive is 5m, which guarantees every hourly call is
-      // cold. 70m spans the gap with slack for clock skew.
-      keep_alive: '70m',
-      options: { num_predict: opts.maxTokens },
-    }),
-    // Cold-start on SD845: ~25s load + ~60s prompt_eval(300 tok) + ~40s
-    // generate(128 tok) ≈ 125s worst case. 180s = comfortable headroom.
-    // Subsequent warm calls finish in ~10s.
-    signal: AbortSignal.timeout(180_000),
-  });
-
-  if (!resp.ok) {
-    throw new Error(`Ollama generate failed: ${resp.status} ${resp.statusText}`);
+  if (!apiKey) {
+    if (!hasWarnedMissingKey) {
+      console.warn('[gemini] GEMINI_API_KEY not set — AI telemetry analysis disabled');
+      hasWarnedMissingKey = true;
+    }
+    throw new Error('GEMINI_API_KEY not configured');
   }
 
-  const data = (await resp.json()) as OllamaGenerateResponse;
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: opts.system }] },
+        contents: [{ role: 'user', parts: [{ text: opts.prompt }] }],
+        generationConfig: {
+          maxOutputTokens: opts.maxTokens,
+          // Short-form deterministic telemetry narration doesn't need
+          // extended reasoning — disable it to keep latency and cost down.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+      // Cloud API — no local cold-start model load to wait out. Generous
+      // headroom for a hosted call, without the multi-minute slack the
+      // previous self-hosted-model path needed.
+      signal: AbortSignal.timeout(30_000),
+    },
+  );
+
+  if (!resp.ok) {
+    throw new Error(`Gemini generate failed: ${resp.status} ${resp.statusText}`);
+  }
+
+  const data = (await resp.json()) as GeminiGenerateResponse;
+  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
   return {
-    text: data.response ?? '',
-    promptTokens: data.prompt_eval_count ?? 0,
-    completionTokens: data.eval_count ?? 0,
+    text: stripJsonFences(rawText),
+    promptTokens: data.usageMetadata?.promptTokenCount ?? 0,
+    completionTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
   };
 }
 
 export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<AiAnalyzeResponse> {
-  const ollamaModel = process.env['OLLAMA_MODEL'] ?? 'qwen2.5:3b-instruct-q4_K_M';
+  const model = process.env['GEMINI_MODEL'] ?? 'gemini-2.5-flash';
   const startMs = Date.now();
 
   const userMessage = JSON.stringify({
@@ -106,6 +134,11 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
     service_mode_active: telemetry.serviceMode,
     sunrise_local: telemetry.sunriseLocal ?? null,
     sunset_local: telemetry.sunsetLocal ?? null,
+    device_rssi: telemetry.deviceRssi ?? null,
+    device_voltage_v: telemetry.deviceVoltageV ?? null,
+    device_temp_c: telemetry.deviceTempC ?? null,
+    device_light_level: telemetry.deviceLightLevel ?? null,
+    device_last_seen: telemetry.deviceLastSeen ?? null,
     context_note: telemetry.contextNote ?? null,
   }, null, 2);
 
@@ -116,7 +149,7 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
   let errorMessage: string | null = null;
 
   try {
-    const result = await ollamaGenerate({
+    const result = await geminiGenerate({
       system: TELEMETRY_SYSTEM_PROMPT,
       prompt: userMessage,
       maxTokens: 128,
@@ -135,7 +168,7 @@ export async function analyzeCoopTelemetry(telemetry: CoopTelemetry): Promise<Ai
   const durationMs = Date.now() - startMs;
 
   await db.insert(aiAnalysisLog).values({
-    model: ollamaModel,
+    model,
     promptTokens,
     completionTokens,
     doorState: telemetry.doorState,

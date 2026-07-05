@@ -1,10 +1,10 @@
-import type { ApiSettings } from './types.js';
+import type { SettingsPatchBody } from './schemas.js';
 
 // Converts a partial settings payload into a database patch containing ONLY
 // the keys that were actually provided. This prevents a partial PUT from
 // silently resetting untouched fields to their schema defaults.
 export function buildSettingsPatch(
-  body: Partial<ApiSettings>,
+  body: SettingsPatchBody,
   now: Date = new Date(),
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = { updatedAt: now };
@@ -15,5 +15,6 @@ export function buildSettingsPatch(
   if (body.smartNightLight !== undefined) patch['smartNightLight'] = body.smartNightLight;
   if (body.locationLat !== undefined) patch['locationLat'] = body.locationLat;
   if (body.locationLon !== undefined) patch['locationLon'] = body.locationLon;
+  if (body.lightThreshold !== undefined) patch['lightThreshold'] = body.lightThreshold;
   return patch;
 }

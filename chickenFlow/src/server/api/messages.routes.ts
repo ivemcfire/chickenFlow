@@ -3,7 +3,8 @@ import { db } from '../db/index.js';
 import { statusMessages } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import type { StatusMessageRequest } from './types.js';
+import { validate } from '../middleware/validate.js';
+import { statusMessageSchema, pinMessageSchema, type StatusMessageBody } from './schemas.js';
 
 export const messagesRouter = Router();
 
@@ -23,13 +24,9 @@ messagesRouter.get('/', async (_req, res, next) => {
   }
 });
 
-messagesRouter.post('/', async (req, res, next) => {
+messagesRouter.post('/', validate(statusMessageSchema), async (req, res, next) => {
   try {
-    const body = req.body as StatusMessageRequest;
-    if (!body.id || !body.text) {
-      res.status(400).json({ error: 'BadRequest', message: 'id and text are required', statusCode: 400 });
-      return;
-    }
+    const body = req.body as StatusMessageBody;
     await db.insert(statusMessages).values({
       id: body.id,
       text: body.text,
@@ -47,9 +44,9 @@ messagesRouter.post('/', async (req, res, next) => {
   }
 });
 
-messagesRouter.patch('/:id/pin', async (req, res, next) => {
+messagesRouter.patch<{ id: string }>('/:id/pin', validate(pinMessageSchema), async (req, res, next) => {
   try {
-    const { pin } = req.body as { pin: boolean };
+    const { pin } = req.body as { pin?: boolean };
     await db.update(statusMessages)
       .set({ isPinned: pin ?? true })
       .where(eq(statusMessages.id, req.params['id']!));
