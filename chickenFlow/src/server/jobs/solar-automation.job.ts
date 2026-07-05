@@ -1,42 +1,45 @@
 import { db } from '../db/index.js';
-import { settings, weatherCache, doorEvents, deviceStatus } from '../db/schema.js';
-import { desc, eq, sql } from 'drizzle-orm';
+import { settings, weatherCache, deviceStatus } from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
-import { publishDoorCommand } from '../services/mqtt-bridge.service.js';
+import { getDoorState, requestDoorCommand } from '../services/door-state.service.js';
 import { localDate } from '../util/local-date.js';
 
 const FAILSAFE_MS = 90 * 60 * 1000;
 
 // Decides whether the door should currently be OPEN (day) or CLOSED (night)
-// based on today's sunrise/sunset, then queues a command for the ESP32 if the
-// last known door state disagrees. Skipped when service mode is on, severe
-// weather is forecast, or a command is already pending.
+// based on today's sunrise/sunset, then commands the ESP32 over MQTT if the
+// last known door state disagrees. Skipped when service mode is on, automatic
+// door is disabled, or severe weather is forecast. Duplicate suppression
+// (already moving / command in flight) lives in the door-state service.
 export async function solarAutomationJob(): Promise<void> {
   const [cfg] = await db.select().from(settings).where(eq(settings.id, 1));
   if (!cfg) return;
 
   if (cfg.serviceMode) return;
-  if (cfg.pendingCommand && cfg.pendingCommand !== 'NONE') return;
+  if (!cfg.automaticDoor) return;
 
-  // Manual-override window: the button-triggered 15 min open bypasses solar.
-  // When the window just lapsed, this job is responsible for clearing the
-  // flag and queuing CLOSE so the coop returns to automatic rule.
+  // Manual-override window: a button- or UI-triggered 15 min open bypasses
+  // solar. When the window just lapsed, this job clears the flag and commands
+  // CLOSE so the coop returns to automatic rule.
   if (cfg.manualOverrideUntil) {
     const overrideMs = cfg.manualOverrideUntil.getTime();
     if (overrideMs > Date.now()) return;
 
     await db.update(settings)
-      .set({ manualOverrideUntil: null, pendingCommand: 'CLOSE' })
+      .set({ manualOverrideUntil: null })
       .where(eq(settings.id, 1));
 
-    wsBroadcaster.broadcast('door:command_received', { command: 'CLOSE' });
-    wsBroadcaster.broadcast('system:alert', {
-      severity: 'info',
-      text: 'Manual override expired — door CLOSE queued, automation resumed.',
-      category: 'MANUAL_OVERRIDE',
-      isPinned: false,
-    });
-    console.log('[Job:solar-automation] Manual override expired — queued CLOSE');
+    const result = await requestDoorCommand('CLOSE', 'solar-auto');
+    if (result.sent) {
+      wsBroadcaster.broadcast('system:alert', {
+        severity: 'info',
+        text: 'Manual override expired — door CLOSE commanded, automation resumed.',
+        category: 'MANUAL_OVERRIDE',
+        isPinned: false,
+      });
+    }
+    console.log(`[Job:solar-automation] Manual override expired — CLOSE ${result.sent ? 'sent' : `not sent (${result.reason})`}`);
     return;
   }
 
@@ -51,11 +54,7 @@ export async function solarAutomationJob(): Promise<void> {
   const sunsetMs = new Date(today.sunset).getTime();
   const isDay = now >= sunriseMs && now < sunsetMs;
 
-  const [latest] = await db.select({ toState: doorEvents.toState })
-    .from(doorEvents)
-    .orderBy(desc(doorEvents.createdAt))
-    .limit(1);
-  const doorState = latest?.toState ?? 'CLOSED';
+  const doorState = await getDoorState();
 
   let target: 'OPEN' | 'CLOSE' | null = null;
   let devLightLevel: number | null | undefined;
@@ -92,22 +91,24 @@ export async function solarAutomationJob(): Promise<void> {
 
   if (!target) return;
 
-  await db.update(settings)
-    .set({ pendingCommand: target })
-    .where(eq(settings.id, 1));
+  const result = await requestDoorCommand(target, 'solar-auto');
+  if (!result.sent) {
+    if (result.reason === 'mqtt-disconnected') {
+      console.warn(`[Job:solar-automation] ${target} not sent — MQTT disconnected`);
+    }
+    return;
+  }
 
-  publishDoorCommand(target, 'solar-auto');
-  wsBroadcaster.broadcast('door:command_received', { command: target });
   wsBroadcaster.broadcast('system:alert', {
     severity: 'info',
-    text: `Solar automation queued ${target} command (${isDay ? 'day' : 'night'} mode).`,
+    text: `Solar automation commanded ${target} (${isDay ? 'day' : 'night'} mode).`,
     category: 'SOLAR_AUTO',
     isPinned: false,
   });
 
   if (isDay) {
-    console.log(`[Job:solar-automation] day mode, doorState=${doorState}, light=${devLightLevel ?? 'n/a'}/${cfg.lightThreshold} → queued ${target}`);
+    console.log(`[Job:solar-automation] day mode, doorState=${doorState}, light=${devLightLevel ?? 'n/a'}/${cfg.lightThreshold} → sent ${target}`);
   } else {
-    console.log(`[Job:solar-automation] night mode, doorState=${doorState} → queued ${target}`);
+    console.log(`[Job:solar-automation] night mode, doorState=${doorState} → sent ${target}`);
   }
 }

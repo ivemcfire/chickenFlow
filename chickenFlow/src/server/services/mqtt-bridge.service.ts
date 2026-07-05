@@ -1,14 +1,11 @@
 import mqtt, { type MqttClient } from 'mqtt';
-import { sql, eq, desc } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import {
-  chickenCounts,
-  doorEvents,
-  settings,
-} from '../db/schema.js';
+import { chickenCounts, settings } from '../db/schema.js';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
 import { localDate, tzOffsetMinutes } from '../util/local-date.js';
+import { getDoorState, recordDeviceTransition } from './door-state.service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChickenFlow MQTT bridge
@@ -25,7 +22,32 @@ const T_DOOR_STATUS = 'coop/door/status';
 const T_DOOR_CMD = 'coop/door/cmd';
 const T_CONFIG = 'coop/config';
 
+// mqtt.js reconnects against the address it first resolved. When the broker
+// Service is recreated the old ClusterIP is gone and every retry fails with
+// ENETUNREACH forever (observed 2026-07-04: pod deaf for weeks). After this
+// many consecutive failed reconnects, tear the client down and build a new
+// one so the hostname is resolved again.
+const RECREATE_AFTER_CLOSES = 12; // ~1 min at reconnectPeriod 5 s
+const RECREATE_DELAY_MS = 5_000;
+
 let client: MqttClient | null = null;
+let closesSinceConnect = 0;
+let lastConnectedAt: Date | null = null;
+let lastMqttError: string | null = null;
+
+export interface MqttStatus {
+  connected: boolean;
+  lastConnectedAt: string | null;
+  lastError: string | null;
+}
+
+export function getMqttStatus(): MqttStatus {
+  return {
+    connected: client?.connected ?? false,
+    lastConnectedAt: lastConnectedAt?.toISOString() ?? null,
+    lastError: lastMqttError,
+  };
+}
 
 export function startMqttBridge(): void {
   if (client) return;
@@ -40,6 +62,9 @@ export function startMqttBridge(): void {
 
   client.on('connect', () => {
     console.log('[mqtt] connected');
+    closesSinceConnect = 0;
+    lastConnectedAt = new Date();
+    lastMqttError = null;
     client?.subscribe(
       {
         [T_TELEMETRY]: { qos: 0 },
@@ -55,8 +80,23 @@ export function startMqttBridge(): void {
   });
 
   client.on('reconnect', () => console.log('[mqtt] reconnecting…'));
-  client.on('close', () => console.log('[mqtt] connection closed'));
-  client.on('error', (err) => console.error('[mqtt] error:', err.message));
+  client.on('error', (err) => {
+    lastMqttError = err.message;
+    console.error('[mqtt] error:', err.message);
+  });
+
+  client.on('close', () => {
+    closesSinceConnect += 1;
+    console.log(`[mqtt] connection closed (${closesSinceConnect} since last connect)`);
+    if (closesSinceConnect >= RECREATE_AFTER_CLOSES) {
+      console.warn('[mqtt] reconnect loop stuck — recreating client to force DNS re-resolution');
+      const stuck = client;
+      client = null;
+      closesSinceConnect = 0;
+      stuck?.end(true);
+      setTimeout(() => startMqttBridge(), RECREATE_DELAY_MS);
+    }
+  });
 
   client.on('message', (topic, buf) => {
     let payload: Record<string, unknown>;
@@ -104,12 +144,7 @@ async function handleTelemetry(p: Record<string, unknown>): Promise<void> {
     .where(eq(chickenCounts.date, todayStr));
   const chickensInside = countRow?.netInside ?? 0;
 
-  const [lastDoor] = await db
-    .select({ toState: doorEvents.toState })
-    .from(doorEvents)
-    .orderBy(desc(doorEvents.createdAt))
-    .limit(1);
-  const doorState = lastDoor?.toState ?? 'CLOSED';
+  const doorState = await getDoorState();
 
   wsBroadcaster.broadcast('sensor:reading', {
     topSensorTriggered: false,
@@ -172,43 +207,28 @@ async function handleDoorStatus(p: Record<string, unknown>): Promise<void> {
     console.warn('[mqtt] dropping door/status without state field');
     return;
   }
-  const fromState = typeof p['from_state'] === 'string' ? p['from_state'] : 'UNKNOWN';
-  const trigger = typeof p['last_event'] === 'string' ? p['last_event'] : 'esp32';
 
-  const [lastDoor] = await db
-    .select({ toState: doorEvents.toState })
-    .from(doorEvents)
-    .orderBy(desc(doorEvents.createdAt))
-    .limit(1);
-
-  if (lastDoor?.toState === toState) {
+  const recorded = await recordDeviceTransition({
+    toState,
+    fromState: typeof p['from_state'] === 'string' ? p['from_state'] : undefined,
+    trigger: typeof p['last_event'] === 'string' ? p['last_event'] : undefined,
+  });
+  if (!recorded) {
     console.log(`[mqtt] ignoring duplicate door/status for state=${toState}`);
-    return;
   }
-
-  await db.insert(doorEvents).values({
-    fromState,
-    toState,
-    trigger,
-    isManual: trigger === 'manual',
-  });
-
-  wsBroadcaster.broadcast('door:state_changed', {
-    fromState,
-    toState,
-    trigger,
-  });
 }
 
 // ── Outbound: door commands ──────────────────────────────────────────────────
+// Low-level publish — everything above this goes through
+// door-state.service.requestDoorCommand(), never call this directly.
 export function publishDoorCommand(
   action: 'OPEN' | 'CLOSE',
   trigger: string,
   force = false,
-): void {
+): boolean {
   if (!client || !client.connected) {
     console.warn('[mqtt] cannot publish door cmd — client not connected');
-    return;
+    return false;
   }
   const payload = JSON.stringify({
     action,
@@ -219,6 +239,7 @@ export function publishDoorCommand(
   client.publish(T_DOOR_CMD, payload, { qos: 1 }, (err) => {
     if (err) console.error('[mqtt] door cmd publish failed:', err.message);
   });
+  return true;
 }
 
 // ── Outbound: retained config ────────────────────────────────────────────────

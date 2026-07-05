@@ -1,8 +1,9 @@
 import { fetchAndCacheWeather } from '../services/weather.service.js';
 import { db } from '../db/index.js';
-import { settings, weatherCache, doorEvents } from '../db/schema.js';
-import { eq, desc, sql } from 'drizzle-orm';
+import { settings, weatherCache } from '../db/schema.js';
+import { eq, sql } from 'drizzle-orm';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
+import { requestDoorCommand } from '../services/door-state.service.js';
 import { localDate } from '../util/local-date.js';
 
 export async function weatherPollJob(): Promise<void> {
@@ -33,24 +34,19 @@ export async function weatherPollJob(): Promise<void> {
         return;
       }
 
-      const [latestDoor] = await db.select({ toState: doorEvents.toState })
-        .from(doorEvents)
-        .orderBy(desc(doorEvents.createdAt))
-        .limit(1);
-
-      if (latestDoor?.toState === 'OPEN' || latestDoor?.toState === 'OPENING') {
-        await db.update(settings)
-          .set({ pendingCommand: 'CLOSE' })
-          .where(eq(settings.id, 1));
-
+      // requestDoorCommand skips if already CLOSED/CLOSING, so this is safe
+      // to call on every 15 min tick while the severe forecast holds.
+      const result = await requestDoorCommand('CLOSE', 'weather');
+      if (result.sent) {
         wsBroadcaster.broadcast('system:alert', {
           severity: 'warning',
-          text: `Severe weather detected (code ${today.weatherCode}). Door close queued for ESP32.`,
+          text: `Severe weather detected (code ${today.weatherCode}). Door CLOSE commanded.`,
           category: 'WEATHER_LOCK',
           isPinned: true,
         });
-
-        console.log(`[Job:weather-poll] Severe weather (code ${today.weatherCode}) — close command queued`);
+        console.log(`[Job:weather-poll] Severe weather (code ${today.weatherCode}) — CLOSE sent`);
+      } else if (result.reason === 'mqtt-disconnected') {
+        console.warn('[Job:weather-poll] Severe weather CLOSE not sent — MQTT disconnected');
       }
     }
   } catch (err) {

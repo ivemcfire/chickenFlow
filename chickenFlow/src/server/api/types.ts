@@ -10,7 +10,6 @@ export interface ApiSettings {
   smartNightLight: boolean;
   locationLat: number;
   locationLon: number;
-  pendingCommand: string;
 }
 
 export interface DoorCommandRequest {

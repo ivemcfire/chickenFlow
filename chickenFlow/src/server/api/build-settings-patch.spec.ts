@@ -1,4 +1,5 @@
 import { buildSettingsPatch } from './build-settings-patch';
+import type { ApiSettings } from './types';
 
 describe('buildSettingsPatch', () => {
   const fixedNow = new Date('2026-04-13T12:00:00Z');
@@ -50,11 +51,11 @@ describe('buildSettingsPatch', () => {
     });
   });
 
-  it('ignores unknown / pendingCommand keys (not part of ApiSettings patch surface)', () => {
+  it('ignores keys outside the ApiSettings patch surface', () => {
     const patch = buildSettingsPatch(
-      { serviceMode: true, pendingCommand: 'CLOSE' },
+      { serviceMode: true, bogus: 'CLOSE' } as Partial<ApiSettings>,
       fixedNow,
     );
-    expect(patch['pendingCommand']).toBeUndefined();
+    expect(patch['bogus']).toBeUndefined();
   });
 });
