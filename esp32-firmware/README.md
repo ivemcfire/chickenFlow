@@ -91,21 +91,21 @@ Edit `config.h` before flashing:
 
 ### Boot sequence
 1. Read limit switches → determine initial door state
-2. Init camera
-3. Connect WiFi (via saved credentials or AP config portal)
+2. Connect WiFi (via saved credentials or AP config portal)
+3. Connect MQTT broker (192.168.100.207) → receive retained `coop/config`, publish `coop/door/status` (`last_event: "boot"`)
 4. 3 quick LED blinks = ready
 
 ### Main loop (every iteration)
-- IR sensor: debounced pulse counting → updates `chickensInside`
-- Every 5s: `GET /api/esp32/command` → execute OPEN or CLOSE if pending
-- Every 10s: `POST /api/esp32/sensor` → distance, IR state, chicken count, door state
-- Every 60s: `POST /api/esp32/capture` → JPEG image (backend resizes + AI analysis)
+- IR tunnel beams: debounced A→B / B→A sequence detection → publish one `coop/count` (`dir: IN|OUT`, QoS 1) per transit
+- MQTT loop: execute `coop/door/cmd` on arrival; publish `coop/door/status` (retained, QoS 1) on every transition
+- Every 60s (`MQTT_TELEMETRY_INTERVAL_MS`): publish `coop/telemetry` (temp, current, voltage, RSSI, uptime, light level)
+- Broker lost > 5 min (`MQTT_AUTONOMY_GRACE_MS`): autonomous fallback — local solar schedule from DS3231 + retained config
 
 ### Door movement
 1. Energise motor (soft-start via PWM ramp)
 2. Poll limit switch + INA219 current each cycle
 3. During CLOSE: INA219 monitors for stall current pattern (obstruction)
-   - If stall detected: stop, call AI vision gate, re-open, wait 30s, retry (max 3×)
+   - If stall detected: stop, re-open, wait 30s, retry (max 3×) — hardware-authoritative, no backend round-trip
    - After 3 failures: report ERROR state, stop
 4. On limit switch hit: stop motor, report door event to backend
 5. Travel timeout (15s default): stop motor, report ERROR
@@ -116,19 +116,22 @@ Edit `config.h` before flashing:
 | Boot | Rapid blink | Connecting to WiFi |
 | Connected | Solid ON 3s | WiFi connected confirmation |
 | Running | Constant ON | System healthy, normal operation |
-| Data transfer | Brief OFF flicker | HTTP packet send/receive (HDD-style) |
+| Data transfer | Brief OFF flicker | MQTT publish (HDD-style) |
 | Error | 5 fast blinks | Door travel timeout |
 | Error | 6 medium blinks | Obstruction max retries — door in ERROR |
 
 ---
 
-## API Endpoints Used
+## Backend contract (MQTT only)
 
-All requests go to `SERVER_HOST` (plain HTTP, no TLS):
+The firmware makes **zero HTTP calls**. The full topic contract (payload
+schemas, QoS, retain flags) lives in `chickenFlow/docs/mqtt-schema.md` — keep
+it, `src/config.h`, and the backend's `mqtt-bridge.service.ts` in lock-step.
 
-| Method | Path | Payload | Purpose |
-|--------|------|---------|---------|
-| `GET` | `/api/esp32/command` | — | Poll for door command. Response: `{"action":"OPEN\|CLOSE\|NONE","delay":0}`. Server resets to NONE after delivery. |
-| `POST` | `/api/esp32/sensor` | JSON | `irTriggered, irATriggered, irBTriggered, chickensInside, totalChickens, doorState` |
-| `POST` | `/api/esp32/capture` | multipart | `image` field (JPEG, max 4MB). Backend resizes → 800px, triggers Claude vision analysis. |
-| `POST` | `/api/esp32/door-event` | JSON | `fromState, toState, chickensInside` |
+| Topic | Dir | Purpose |
+|-------|-----|---------|
+| `coop/telemetry` | ESP → broker | 60 s health ping (QoS 0) |
+| `coop/count` | ESP → broker | one message per IR-tunnel transit (QoS 1) |
+| `coop/door/status` | ESP → broker | every door transition (QoS 1, retained) |
+| `coop/door/cmd` | broker → ESP | door commands from UI/automation (QoS 1) |
+| `coop/config` | broker → ESP | retained config: lat/lon, tz offset, travel watchdog |

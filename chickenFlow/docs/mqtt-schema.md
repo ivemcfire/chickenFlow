@@ -4,8 +4,8 @@ The single source of truth for the firmware ↔ backend contract. Any change
 here must land in both `esp32-firmware/chickenflow-esp32-s2/src/config.h` and
 `chickenFlow/src/server/services/mqtt-bridge.service.ts` in the same commit.
 
-**Broker**: `mosquitto.hydroflow` on k3s.
-- Cluster-internal (backend): `mqtt://mosquitto.hydroflow.svc.cluster.local:1883`
+**Broker**: `mosquitto` in the `infra` namespace on k3s (moved from `hydroflow` 2026-07-06).
+- Cluster-internal (backend): `mqtt://mosquitto.infra.svc.cluster.local:1883`
 - LAN (ESP32): `mqtt://192.168.100.207:1883`
 
 **Conventions**
@@ -51,7 +51,7 @@ One message per directional transit event (A→B or B→A sequence completed).
 - `IN`  = yard → coop  (beam A then beam B)
 - `OUT` = coop → yard  (beam B then beam A)
 
-Backend action: atomic UPSERT into `chicken_counts` keyed on local date.
+Backend action: append a raw `count_events` row (`source: 'beam'`), then atomic UPSERT into `chicken_counts` keyed on local date.
 - `IN`  → `(total_in +1, total_out +0, net_inside +1)`
 - `OUT` → `(total_in +0, total_out +1, net_inside -1)`
 

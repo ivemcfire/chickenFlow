@@ -1,8 +1,8 @@
 IMAGE     := ghcr.io/ivemcfire/chickenflow
 NAMESPACE := chickenflow
 
-.PHONY: help build push deploy status health logs rollback db-shell restart \
-        node-label secret-create verify-first-deploy
+.PHONY: help build push deploy status health logs rollback restart \
+        node-label verify-first-deploy
 
 help:
 	@echo ""
@@ -15,10 +15,8 @@ help:
 	@echo "  make health              Curl /api/health"
 	@echo "  make logs                Follow pod logs"
 	@echo "  make rollback            Roll back to previous image"
-	@echo "  make db-shell            Open SQLite shell on the pod"
 	@echo "  make restart             Force pod restart"
 	@echo "  make node-label NODE=<name>  Label a node for PVC placement"
-	@echo "  make secret-create KEY=sk-ant-...  Create ai-secret"
 	@echo "  make verify-first-deploy  Full post-deploy health check"
 	@echo ""
 
@@ -67,11 +65,6 @@ rollback:
 	kubectl rollout undo deployment/chickenflow-backend -n $(NAMESPACE)
 	kubectl rollout status deployment/chickenflow-backend -n $(NAMESPACE)
 
-db-shell:
-	$(eval POD := $(shell kubectl get pod -n $(NAMESPACE) -l app=chickenflow -o jsonpath='{.items[0].metadata.name}'))
-	kubectl exec -it $(POD) -n $(NAMESPACE) -- sqlite3 /data/chickenflow.db
-
-# ── First-deploy helpers ──────────────────────────────────────────────────────
 
 node-label:
 ifndef NODE
@@ -79,14 +72,6 @@ ifndef NODE
 endif
 	kubectl label node $(NODE) chickenflow/storage=true --overwrite
 
-secret-create:
-ifndef KEY
-	$(error KEY is required: make secret-create KEY=sk-ant-...)
-endif
-	kubectl create secret generic ai-secret \
-		--from-literal=api-key=$(KEY) \
-		--namespace=$(NAMESPACE) \
-		--dry-run=client -o yaml | kubectl apply -f -
 
 verify-first-deploy:
 	@echo "1. Pod status..."
