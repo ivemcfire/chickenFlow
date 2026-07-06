@@ -14,8 +14,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:check": "drizzle-kit check",
-    "docker:build": "docker build -t chickenflow:latest .",
-    "k3s:deploy": "kubectl apply -f deploy/"
+    "docker:build": "docker build -t chickenflow:latest ."
   },
   "private": true,
   "dependencies": {

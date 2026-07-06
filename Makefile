@@ -1,6 +1,5 @@
 IMAGE     := ghcr.io/ivemcfire/chickenflow
 NAMESPACE := chickenflow
-DEPLOY    := chickenFlow/deploy
 
 .PHONY: help build push deploy status health logs rollback db-shell restart \
         node-label secret-create verify-first-deploy
@@ -11,7 +10,7 @@ help:
 	@echo "─────────────────────────────────────────────────────────────"
 	@echo "  make build               Build Docker image locally"
 	@echo "  make push                Push image to ghcr.io"
-	@echo "  make deploy              Apply all k3s manifests"
+	@echo "  make deploy              Points to homelab-config (see below)"
 	@echo "  make status              Pod + service status"
 	@echo "  make health              Curl /api/health"
 	@echo "  make logs                Follow pod logs"
@@ -32,14 +31,14 @@ push:
 	docker push $(IMAGE):latest
 
 # ── Deploy ────────────────────────────────────────────────────────────────────
+# k3s manifests are no longer stored in this repo. homelab-config is the
+# single source of truth: apps/chickenflow/ (backend/postgres/cronjob/svc)
+# and apps/infra-mosquitto/ (shared MQTT broker). Apply changes from there.
 
 deploy:
-	kubectl apply -f $(DEPLOY)/namespace.yaml
-	kubectl apply -f $(DEPLOY)/configmap.yaml
-	kubectl apply -f $(DEPLOY)/pvc.yaml
-	kubectl apply -f $(DEPLOY)/deployment.yaml
-	kubectl apply -f $(DEPLOY)/service.yaml
-	@echo "Optional ingress: kubectl apply -f $(DEPLOY)/ingress.yaml"
+	@echo "Manifests moved out of this repo — single source of truth is now homelab-config."
+	@echo "See homelab-config/apps/chickenflow/ (and apps/infra-mosquitto/ for the broker)."
+	@echo "Apply from that repo, not from here."
 
 # ── Ops ───────────────────────────────────────────────────────────────────────
 
