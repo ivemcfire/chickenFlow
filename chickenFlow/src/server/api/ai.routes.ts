@@ -6,7 +6,6 @@ import { analyzeCoopTelemetry } from '../services/gemini.service.js';
 import { assembleCoopTelemetry } from '../jobs/ai-analysis.job.js';
 import { validate } from '../middleware/validate.js';
 import { aiAnalyzeSchema, type AiAnalyzeBody } from './schemas.js';
-import { randomUUID } from 'node:crypto';
 
 export const aiRouter = Router();
 
@@ -22,11 +21,8 @@ aiRouter.post('/analyze', validate(aiAnalyzeSchema), async (req, res, next) => {
     const result = await analyzeCoopTelemetry(telemetry);
 
     if (result.analysisText) {
-      const now = new Date();
       await db.insert(statusMessages).values({
-        id: randomUUID(),
         text: result.analysisText,
-        timestamp: now.toTimeString().split(' ')[0]!,
         isWarning: result.isWarning,
         isError: false,
         isPinned: result.isWarning,

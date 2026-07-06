@@ -1,1 +1,0 @@
-ALTER TABLE "settings" DROP COLUMN "pending_command";

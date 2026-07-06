@@ -5,71 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1776068837883,
-      "tag": "0000_cynical_gunslinger",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1776145681095,
-      "tag": "0001_outstanding_black_knight",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1776240000000,
-      "tag": "0002_chicken_counts",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1776494752183,
-      "tag": "0003_nappy_ben_parker",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1776700800000,
-      "tag": "0004_manual_override",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1776700800001,
-      "tag": "0005_cultured_puppet_master",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1776700800002,
-      "tag": "0006_clever_leper_queen",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1776700800003,
-      "tag": "0007_naive_toxin",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1776700800004,
-      "tag": "0008_mute_thunderbird",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1783278539401,
-      "tag": "0009_bouncy_union_jack",
+      "when": 1783306715802,
+      "tag": "0000_busy_master_mold",
       "breakpoints": true
     }
   ]

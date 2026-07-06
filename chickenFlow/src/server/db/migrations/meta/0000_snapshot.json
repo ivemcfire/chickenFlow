@@ -1,5 +1,5 @@
 {
-  "id": "f061edf8-621f-47af-a8bf-4fff057f5074",
+  "id": "35b2fd51-6411-491f-8ce2-aed81a6efbab",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -18,8 +18,7 @@
           "name": "model",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'gemini-2.5-flash-lite'"
+          "notNull": true
         },
         "prompt_tokens": {
           "name": "prompt_tokens",
@@ -32,13 +31,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
-        },
-        "has_image": {
-          "name": "has_image",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "door_state": {
           "name": "door_state",
@@ -108,24 +100,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "anomaly_detected": {
-          "name": "anomaly_detected",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "threat_type": {
-          "name": "threat_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "count_confirmed": {
-          "name": "count_confirmed",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
         },
         "error_message": {
           "name": "error_message",
@@ -217,25 +191,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_anomaly": {
-          "name": "is_anomaly",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "threat_type": {
-          "name": "threat_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ai_analysis_id": {
-          "name": "ai_analysis_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -259,12 +214,114 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chicken_counts": {
+      "name": "chicken_counts",
+      "schema": "",
+      "columns": {
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
         },
-        "camera_captures_is_anomaly_idx": {
-          "name": "camera_captures_is_anomaly_idx",
+        "total_in": {
+          "name": "total_in",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "total_out": {
+          "name": "total_out",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "net_inside": {
+          "name": "net_inside",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chicken_counts_total_in_check": {
+          "name": "chicken_counts_total_in_check",
+          "value": "\"chicken_counts\".\"total_in\" >= 0"
+        },
+        "chicken_counts_total_out_check": {
+          "name": "chicken_counts_total_out_check",
+          "value": "\"chicken_counts\".\"total_out\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.count_events": {
+      "name": "count_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "dir": {
+          "name": "dir",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'beam'"
+        },
+        "event_at": {
+          "name": "event_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "count_events_event_at_idx": {
+          "name": "count_events_event_at_idx",
           "columns": [
             {
-              "expression": "is_anomaly",
+              "expression": "event_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -276,6 +333,84 @@
           "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "count_events_dir_check": {
+          "name": "count_events_dir_check",
+          "value": "\"count_events\".\"dir\" IN ('IN','OUT')"
+        },
+        "count_events_source_check": {
+          "name": "count_events_source_check",
+          "value": "\"count_events\".\"source\" IN ('beam','camera')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.device_status": {
+      "name": "device_status",
+      "schema": "",
+      "columns": {
+        "device_id": {
+          "name": "device_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_seen": {
+          "name": "last_seen",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "rssi": {
+          "name": "rssi",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "voltage_v": {
+          "name": "voltage_v",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_ma": {
+          "name": "current_ma",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "temp_c": {
+          "name": "temp_c",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uptime_s": {
+          "name": "uptime_s",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "light_level": {
+          "name": "light_level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -380,80 +515,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.sensor_readings": {
-      "name": "sensor_readings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
+      "checkConstraints": {
+        "door_events_to_state_check": {
+          "name": "door_events_to_state_check",
+          "value": "\"door_events\".\"to_state\" IN ('OPEN','CLOSED','OPENING','CLOSING','ERROR')"
         },
-        "distance_cm": {
-          "name": "distance_cm",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ir_triggered": {
-          "name": "ir_triggered",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "chickens_inside": {
-          "name": "chickens_inside",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "total_chickens": {
-          "name": "total_chickens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "door_state": {
-          "name": "door_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+        "door_events_from_state_check": {
+          "name": "door_events_from_state_check",
+          "value": "\"door_events\".\"from_state\" IN ('OPEN','CLOSED','OPENING','CLOSING','ERROR','UNKNOWN')"
         }
       },
-      "indexes": {
-        "sensor_readings_created_at_idx": {
-          "name": "sensor_readings_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.settings": {
@@ -516,12 +587,18 @@
           "notNull": true,
           "default": -0.1278
         },
-        "pending_command": {
-          "name": "pending_command",
-          "type": "text",
+        "light_threshold": {
+          "name": "light_threshold",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "default": "'NONE'"
+          "default": 2000
+        },
+        "manual_override_until": {
+          "name": "manual_override_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -545,18 +622,12 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "serial",
           "primaryKey": true,
           "notNull": true
         },
         "text": {
           "name": "text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "timestamp": {
-          "name": "timestamp",
           "type": "text",
           "primaryKey": false,
           "notNull": true

@@ -29,10 +29,10 @@ export const settingsPatchSchema = z.object({
 export type SettingsPatchBody = z.infer<typeof settingsPatchSchema>;
 
 // ── Status message — POST /api/messages ──────────────────────────────────────
+// id is server-generated (serial PK) and createdAt covers the timestamp —
+// neither is accepted from the client.
 export const statusMessageSchema = z.object({
-  id: z.string(),
   text: z.string(),
-  timestamp: z.string(),
   isWarning: z.boolean().optional(),
   isError: z.boolean().optional(),
   isPinned: z.boolean().optional(),

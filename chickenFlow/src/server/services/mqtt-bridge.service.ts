@@ -1,7 +1,7 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import { sql, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { chickenCounts, settings } from '../db/schema.js';
+import { chickenCounts, countEvents, settings } from '../db/schema.js';
 import { wsBroadcaster } from '../ws/ws-broadcaster.js';
 import { markEsp32Online } from '../jobs/esp32-heartbeat.job.js';
 import { localDate, tzOffsetMinutes } from '../util/local-date.js';
@@ -175,12 +175,17 @@ async function handleCount(raw: Record<string, unknown>): Promise<void> {
   const { dir, ts } = parsed.data;
 
   const eventInstant = ts ? new Date(ts) : new Date();
-  const dateKey = localDate(isNaN(eventInstant.getTime()) ? new Date() : eventInstant);
+  const eventAt = isNaN(eventInstant.getTime()) ? new Date() : eventInstant;
+  const dateKey = localDate(eventAt);
 
   const isEntry = dir === 'IN';
   const inDelta = isEntry ? 1 : 0;
   const outDelta = isEntry ? 0 : 1;
   const netDelta = isEntry ? 1 : -1;
+
+  // Raw append-only log — the daily tally below throws away per-event detail,
+  // this preserves it for the planned camera-fusion / history features.
+  await db.insert(countEvents).values({ dir, source: 'beam', eventAt });
 
   // Atomic per-event increment — concurrent IRs cannot corrupt the tally.
   await db.execute(sql`

@@ -3,7 +3,6 @@ import { settings, weatherCache, statusMessages, chickenCounts, deviceStatus } f
 import { eq, sql } from 'drizzle-orm';
 import { analyzeCoopTelemetry, type CoopTelemetry } from '../services/gemini.service.js';
 import { getDoorState } from '../services/door-state.service.js';
-import { randomUUID } from 'node:crypto';
 import { localDate } from '../util/local-date.js';
 
 // Assembles the AI's view of the coop entirely from real, server-owned state
@@ -48,11 +47,8 @@ export async function aiAnalysisJob(): Promise<void> {
 
     // Persist result as a status message so the Angular frontend sees it
     if (result.analysisText) {
-      const now = new Date();
       await db.insert(statusMessages).values({
-        id: randomUUID(),
         text: result.analysisText,
-        timestamp: now.toTimeString().split(' ')[0]!,
         isWarning: result.isWarning,
         isError: false,
         isPinned: result.isWarning,

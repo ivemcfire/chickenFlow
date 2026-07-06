@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { statusMessages, sensorReadings } from '../db/schema.js';
+import { statusMessages } from '../db/schema.js';
 import { and, eq, lt } from 'drizzle-orm';
 
 export async function messageCleanupJob(): Promise<void> {
@@ -14,12 +14,6 @@ export async function messageCleanupJob(): Promise<void> {
     ))
     .returning({ id: statusMessages.id });
 
-  // Delete sensor readings older than 7 days
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const deletedSensors = await db.delete(sensorReadings)
-    .where(lt(sensorReadings.createdAt, sevenDaysAgo))
-    .returning({ id: sensorReadings.id });
-
   // Unpin old non-critical alerts (older than today)
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -31,7 +25,5 @@ export async function messageCleanupJob(): Promise<void> {
       lt(statusMessages.createdAt, todayStart),
     ));
 
-  console.log(
-    `[Job:message-cleanup] Deleted: ${deletedMessages.length} messages, ${deletedSensors.length} sensor rows`
-  );
+  console.log(`[Job:message-cleanup] Deleted: ${deletedMessages.length} messages`);
 }

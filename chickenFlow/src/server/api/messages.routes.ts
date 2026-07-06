@@ -27,18 +27,16 @@ messagesRouter.get('/', async (_req, res, next) => {
 messagesRouter.post('/', validate(statusMessageSchema), async (req, res, next) => {
   try {
     const body = req.body as StatusMessageBody;
-    await db.insert(statusMessages).values({
-      id: body.id,
+    const [row] = await db.insert(statusMessages).values({
       text: body.text,
-      timestamp: body.timestamp,
       isWarning: body.isWarning ?? false,
       isError: body.isError ?? false,
       isPinned: body.isPinned ?? false,
       category: body.category,
-    });
+    }).returning();
 
-    wsBroadcaster.broadcast('system:message', body);
-    res.status(201).json({ ok: true });
+    wsBroadcaster.broadcast('system:message', row);
+    res.status(201).json({ ok: true, id: row!.id });
   } catch (err) {
     next(err);
   }
@@ -49,7 +47,7 @@ messagesRouter.patch<{ id: string }>('/:id/pin', validate(pinMessageSchema), asy
     const { pin } = req.body as { pin?: boolean };
     await db.update(statusMessages)
       .set({ isPinned: pin ?? true })
-      .where(eq(statusMessages.id, req.params['id']!));
+      .where(eq(statusMessages.id, Number(req.params['id'])));
     res.json({ ok: true });
   } catch (err) {
     next(err);
@@ -70,7 +68,7 @@ messagesRouter.patch('/category/:cat/unpin', async (req, res, next) => {
 messagesRouter.delete('/:id', async (req, res, next) => {
   try {
     await db.delete(statusMessages)
-      .where(eq(statusMessages.id, req.params['id']!));
+      .where(eq(statusMessages.id, Number(req.params['id'])));
     res.json({ ok: true });
   } catch (err) {
     next(err);
