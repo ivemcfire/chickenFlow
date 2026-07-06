@@ -1,0 +1,31 @@
+<!-- Camera Observation View -->
+<div class="glass-card overflow-hidden group/cam">
+  <div class="p-4 border-b border-stone-800 bg-stone-900/30 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span [class]="'relative flex h-2 w-2 ' + (cameraOnline() ? 'animate-pulse' : '')">
+        <span [class]="'absolute inline-flex h-full w-full rounded-full opacity-75 ' + (cameraOnline() ? 'bg-emerald-400' : 'bg-red-400')"></span>
+        <span [class]="'relative inline-flex rounded-full h-2 w-2 ' + (cameraOnline() ? 'bg-emerald-500' : 'bg-red-500')"></span>
+      </span>
+      <span class="text-[10px] font-black tracking-widest text-stone-100 uppercase">{{ cameraOnline() ? 'ONLINE' : 'OFFLINE' }}</span>
+    </div>
+    <span class="text-[8px] font-bold text-stone-500 uppercase tracking-tighter">CAM01 &nbsp; LOW &nbsp; RESOLUTION &nbsp; FEED</span>
+  </div>
+
+  <div class="bg-stone-950 h-48 relative overflow-hidden">
+    <img [src]="camSnapshotUrl()"
+         alt="live"
+         (error)="onCamError()"
+         (load)="onCamLoad()"
+         [class.hidden]="camError()"
+         class="absolute inset-0 w-full h-full object-cover">
+
+    @if (camError()) {
+      <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center opacity-40">
+        <mat-icon class="text-stone-600 text-4xl">videocam_off</mat-icon>
+        <span class="text-[10px] font-bold text-stone-500 uppercase tracking-widest">No Signal</span>
+      </div>
+      <div class="absolute inset-0 opacity-10 pointer-events-none mix-blend-screen"
+           style="background-image: url('data:image/svg+xml,%3Csvg viewBox=%220 0 400 400%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E');"></div>
+    }
+  </div>
+</div>

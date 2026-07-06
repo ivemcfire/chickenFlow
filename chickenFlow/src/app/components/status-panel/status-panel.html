@@ -1,0 +1,120 @@
+<!-- AI Status Report -->
+<div role="button" tabindex="0" class="glass-card p-4 border-l-4 border-amber-500 bg-amber-500/5 min-h-[100px] flex flex-col group cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500/30" (click)="toggleFullLog()" (keydown.enter)="toggleFullLog()">
+  <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center gap-2">
+      <mat-icon class="text-amber-500 text-sm">psychology</mat-icon>
+      <h2 class="text-[10px] font-black text-stone-100 uppercase tracking-widest">AI Status Report</h2>
+      <div class="flex items-center gap-1.5 ml-2">
+        @if (errorCount() > 0) {
+          <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/30 text-[8px] font-bold text-red-500 animate-pulse">
+            <mat-icon class="text-[10px] w-auto h-auto">error</mat-icon>
+            {{ errorCount() }}
+          </span>
+        }
+        @if (warningCount() > 0) {
+          <span class="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-[8px] font-bold text-amber-500">
+            <mat-icon class="text-[10px] w-auto h-auto">warning</mat-icon>
+            {{ warningCount() }}
+          </span>
+        }
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button (click)="$event.stopPropagation(); refreshAI()" [disabled]="serviceMode()" class="p-1 hover:bg-white/5 rounded-full transition-colors group/btn disabled:opacity-30 disabled:cursor-not-allowed">
+        <mat-icon [class.animate-spin]="isAnalyzing()" class="text-stone-500 text-xs group-hover/btn:text-amber-500">refresh</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="flex-1 space-y-2 overflow-hidden pr-2">
+    @for (msg of recentMessages(); track msg.id) {
+      <div class="flex gap-3 p-2 rounded border transition-all"
+           [class.bg-red-500/10]="msg.isWarning"
+           [class.border-red-500/20]="msg.isWarning"
+           [class.border-white/5]="!msg.isWarning"
+           [class.bg-white/5]="msg.isPinned && !msg.isWarning">
+        <div class="flex flex-col items-center pt-0.5">
+          @if (msg.isPinned) {
+            <mat-icon class="text-[10px] text-amber-500 h-3 w-3">push_pin</mat-icon>
+          } @else if (msg.isWarning) {
+            <mat-icon class="text-[10px] text-red-500 h-3 w-3">warning</mat-icon>
+          } @else {
+            <div class="w-1 h-1 rounded-full bg-stone-700 mt-1"></div>
+          }
+        </div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between mb-0.5">
+            <span class="text-[10px] font-mono text-stone-500">{{ msg.createdAt | date: 'HH:mm:ss' }}</span>
+            @if (msg.isWarning) {
+              <span class="text-[7px] font-black text-red-500 uppercase tracking-tighter">Priority</span>
+            }
+          </div>
+          <p class="text-sm leading-relaxed" [class.text-red-200]="msg.isWarning" [class.text-stone-300]="!msg.isWarning">
+            {{ msg.text }}
+          </p>
+        </div>
+      </div>
+    } @empty {
+      <div class="flex flex-col items-center justify-center p-4 opacity-30">
+        <p class="text-[10px] uppercase font-bold tracking-widest">No logs recorded</p>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Full Screen Log Modal -->
+@if (showFullLog()) {
+  <div class="fixed inset-0 z-[100] flex flex-col bg-stone-950 animate-in fade-in duration-300">
+    <div class="flex items-center justify-between p-4 border-b border-stone-800 bg-stone-900/50 backdrop-blur-md sticky top-0 z-10">
+      <div class="flex items-center gap-3">
+        <mat-icon class="text-amber-500">psychology</mat-icon>
+        <h2 class="text-lg font-black tracking-tighter">FULL SYSTEM LOG</h2>
+      </div>
+      <button (click)="toggleFullLog()" class="w-10 h-10 flex items-center justify-center rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white transition-colors">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+      @for (msg of messages(); track msg.id) {
+        <div class="flex gap-4 p-4 rounded-xl border transition-all"
+             [class.bg-red-500/10]="msg.isWarning"
+             [class.border-red-500/30]="msg.isWarning"
+             [class.border-stone-800]="!msg.isWarning"
+             [class.bg-stone-900/40]="msg.isPinned && !msg.isWarning">
+          <div class="flex flex-col items-center pt-1">
+            @if (msg.isPinned) {
+              <mat-icon class="text-xs text-amber-500">push_pin</mat-icon>
+            } @else if (msg.isWarning) {
+              <mat-icon class="text-xs text-red-500">warning</mat-icon>
+            } @else {
+              <div class="w-1.5 h-1.5 rounded-full bg-stone-700 mt-1.5"></div>
+            }
+          </div>
+          <div class="flex-1">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-mono text-stone-500">{{ msg.createdAt | date: 'HH:mm:ss' }}</span>
+              @if (msg.isWarning) {
+                <span class="text-[8px] font-black text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full uppercase tracking-widest border border-red-500/20">Critical Alert</span>
+              }
+            </div>
+            <p class="text-base leading-relaxed" [class.text-red-200]="msg.isWarning" [class.text-stone-200]="!msg.isWarning">
+              {{ msg.text }}
+            </p>
+          </div>
+        </div>
+      } @empty {
+        <div class="flex flex-col items-center justify-center h-[60vh] opacity-30">
+          <mat-icon class="text-6xl mb-4">history</mat-icon>
+          <p class="text-sm uppercase font-bold tracking-widest">No activity logs yet</p>
+        </div>
+      }
+    </div>
+
+    <div class="p-4 border-t border-stone-800 bg-stone-900/30">
+      <button (click)="toggleFullLog()" class="w-full py-4 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl font-bold uppercase tracking-widest transition-all">
+        Close Log Viewer
+      </button>
+    </div>
+  </div>
+}

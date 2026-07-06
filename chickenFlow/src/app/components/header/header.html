@@ -1,0 +1,67 @@
+<header class="flex justify-between items-center">
+  <div role="button" tabindex="0" class="flex items-center gap-3 cursor-pointer group/title select-none active:scale-95 transition-transform focus:outline-none" (click)="toggleAbout()" (keydown.enter)="toggleAbout()">
+    <div class="w-10 h-10 bg-amber-500/10 rounded-xl border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/5 group-hover/title:border-amber-500/40 transition-colors">
+      <span class="text-2xl">🐥</span>
+    </div>
+    <div>
+      <h1 class="text-3xl font-extrabold tracking-tighter">
+        <span class="text-stone-100">CHICKEN</span><span class="text-amber-500">FLOW</span>
+      </h1>
+      <p class="text-stone-500 text-sm font-medium uppercase tracking-widest group-hover/title:text-stone-400 transition-colors">AI CHICKENCOOP DOOR</p>
+    </div>
+  </div>
+  <div class="flex flex-col items-end gap-1">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 bg-amber-500/10 text-amber-400 px-4 py-1 rounded-full border border-amber-500/20 text-xs font-bold">
+        <span class="relative flex h-2 w-2">
+          <span [class]="'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ' + (ldrOnline() ? 'bg-emerald-400' : 'bg-red-400')"></span>
+          <span [class]="'relative inline-flex rounded-full h-2 w-2 ' + (ldrOnline() ? 'bg-emerald-500' : 'bg-red-500')"></span>
+        </span>
+        LDR
+      </div>
+      <div class="flex items-center gap-2 bg-amber-500/10 text-amber-400 px-4 py-1 rounded-full border border-amber-500/20 text-xs font-bold transition-all">
+        <span class="relative flex h-2 w-2">
+          <span [class]="'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ' + (systemOnline() ? 'bg-emerald-400' : 'bg-red-400')"></span>
+          <span [class]="'relative inline-flex rounded-full h-2 w-2 ' + (systemOnline() ? 'bg-emerald-500' : 'bg-red-500')"></span>
+        </span>
+        {{ systemOnline() ? 'SYSTEM ONLINE' : 'SYSTEM OFFLINE' }}
+      </div>
+      <button class="w-8 h-8 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-400 hover:text-amber-500 hover:border-amber-500/50 transition-all" title="User Account (Coming Soon)">
+        <mat-icon class="text-lg">account_circle</mat-icon>
+      </button>
+    </div>
+    <span class="text-[10px] uppercase tracking-tight font-bold"
+          [class.text-stone-300]="backendOnline() && systemOnline()"
+          [class.text-red-400]="!backendOnline() || !systemOnline()">
+      {{ headerStatusLine() }}
+    </span>
+  </div>
+</header>
+
+<!-- About Modal -->
+@if (showAbout()) {
+  <div class="fixed inset-0 z-[110] flex items-center justify-center p-6 animate-in fade-in duration-300">
+    <div role="button" aria-label="Close" tabindex="0" class="absolute inset-0 bg-stone-950/80 backdrop-blur-sm focus:outline-none" (click)="toggleAbout()" (keydown.enter)="toggleAbout()"></div>
+    <div class="relative w-full max-w-sm glass-card p-8 text-center space-y-6 border-t-4 border-amber-500 shadow-2xl animate-in zoom-in-95 duration-300">
+      <div class="flex justify-center mb-2">
+        <div class="w-16 h-16 bg-amber-500/10 rounded-2xl border border-amber-500/20 flex items-center justify-center">
+          <span class="text-4xl">🐥</span>
+        </div>
+      </div>
+      <div>
+        <h2 class="text-2xl font-black text-stone-100 tracking-tighter mb-1">CHICKENFLOW</h2>
+        <p class="text-amber-500 text-[10px] font-bold uppercase tracking-widest">Advanced Autonomous Coop Manager</p>
+      </div>
+
+      <div class="py-6 border-y border-stone-800/50 space-y-1">
+        <p class="text-sm font-medium text-stone-200">ViVidea LTD 2026</p>
+        <p class="text-xs text-stone-500">ChickenFlow APP ver:1.1</p>
+        <p class="text-[10px] font-bold text-stone-600 uppercase tracking-widest pt-2">ALL RIGHTS RESERVED</p>
+      </div>
+
+      <button (click)="toggleAbout()" class="w-full py-3 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl font-bold uppercase tracking-widest transition-all">
+        CLOSE
+      </button>
+    </div>
+  </div>
+}

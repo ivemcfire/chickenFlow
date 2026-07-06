@@ -3,9 +3,12 @@ import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Subject } from 'rxjs';
 
-// ── Backend response types ──────���────────────────────────────────────────────
+// ── Backend response types ────────────────────────────────────────────────────
+// Kept in lockstep with src/server/api/schemas.ts + src/server/api/types.ts —
+// the backend is authoritative, this is just the wire shape.
 
 export interface ApiSettings {
+  id: number;
   totalChickens: number;
   serviceMode: boolean;
   automaticDoor: boolean;
@@ -13,6 +16,10 @@ export interface ApiSettings {
   smartNightLight: boolean;
   locationLat: number;
   locationLon: number;
+  lightThreshold: number;
+  /** ISO timestamp, or null when no manual-open window is active. */
+  manualOverrideUntil: string | null;
+  updatedAt: string;
 }
 
 export interface ApiWeatherDay {
@@ -20,44 +27,75 @@ export interface ApiWeatherDay {
   weatherCode: number;
   tempMax: number;
   tempMin: number;
+  /** ISO datetime as returned by Open-Meteo (no UTC offset — local to the configured lat/lon). */
   sunrise: string;
   sunset: string;
   isSevere: boolean;
   fetchedAt: string;
 }
 
+export type ApiDoorStateValue = 'OPEN' | 'CLOSED' | 'OPENING' | 'CLOSING' | 'ERROR' | 'UNKNOWN';
+
 export interface ApiDoorState {
-  state: string;
+  state: ApiDoorStateValue;
 }
 
-export interface ApiSensorReading {
-  irTriggered: boolean;
-  chickensInside: number;
-  totalChickens: number;
-  doorState: string;
-  createdAt: string;
-}
-
-export interface ApiCaptureRow {
+export interface ApiDoorEvent {
   id: number;
-  filePath: string;
-  fileSizeBytes: number;
-  widthPx: number;
-  heightPx: number;
-  doorStateAtCapture: string;
-  chickensInsideAtCapture: number | null;
-  isAnomaly: boolean;
-  threatType: string | null;
-  aiAnalysisId: number | null;
+  fromState: string;
+  toState: string;
+  trigger: string;
+  isManual: boolean;
+  chickensInside: number | null;
+  totalChickens: number | null;
   createdAt: string;
+}
+
+export type DoorCommandReason =
+  | 'ok'
+  | 'already-in-state'
+  | 'already-moving'
+  | 'command-in-flight'
+  | 'mqtt-disconnected';
+
+export interface ApiDoorCommandResponse {
+  sent: boolean;
+  reason: DoorCommandReason;
+  command: 'OPEN' | 'CLOSE';
+}
+
+export interface ApiMessage {
+  id: number;
+  text: string;
+  isWarning: boolean;
+  isError: boolean;
+  isPinned: boolean;
+  category: string | null;
+  createdAt: string;
+}
+
+export interface ApiPostMessageResult {
+  ok: boolean;
+  id: number;
+}
+
+export interface ApiEsp32Status {
+  online: boolean;
+  lastSeen: string | null;
 }
 
 export interface ApiAiResponse {
   analysisText: string;
   isWarning: boolean;
-  anomalyDetected?: boolean;
-  threatType?: string | null;
+  promptTokens: number;
+  completionTokens: number;
   durationMs: number;
+}
+
+export interface ApiHealth {
+  status: string;
+  db: boolean;
+  mqtt: unknown;
 }
 
 export interface WsEnvelope {
@@ -74,13 +112,17 @@ export class ApiService {
   private platformId = inject(PLATFORM_ID);
   private ws: WebSocket | null = null;
 
-  /** Emits every WebSocket message from the backend */
+  /** Emits every WebSocket message from the backend. */
   readonly wsMessage$ = new Subject<WsEnvelope>();
 
-  /** True once the initial WebSocket connection is established */
+  /** Emits once per successful WebSocket connection (including reconnects) —
+   *  consumers use this to re-hydrate from REST so a dropped connection never
+   *  leaves stale state once it comes back. */
+  readonly wsOpen$ = new Subject<void>();
+
   private wsConnected = false;
 
-  // ── REST API calls ─────────────────────────────────────────────────────────
+  // ── REST API calls ───────────────────────────────────────────────────────
 
   getSettings() {
     return this.http.get<ApiSettings>('/api/settings');
@@ -94,12 +136,12 @@ export class ApiService {
     return this.http.get<ApiDoorState>('/api/door/state');
   }
 
-  sendDoorCommand(command: 'OPEN' | 'CLOSE', trigger = 'manual', chickensInside?: number) {
-    return this.http.post<{ queued: string }>('/api/door/command', {
-      command,
-      trigger,
-      chickensInside,
-    });
+  getDoorEvents(limit = 50) {
+    return this.http.get<ApiDoorEvent[]>('/api/door/events', { params: { limit } });
+  }
+
+  sendDoorCommand(command: 'OPEN' | 'CLOSE', trigger = 'manual') {
+    return this.http.post<ApiDoorCommandResponse>('/api/door/command', { command, trigger });
   }
 
   getWeatherToday() {
@@ -110,40 +152,39 @@ export class ApiService {
     return this.http.get<ApiWeatherDay[]>('/api/weather/forecast');
   }
 
-  getLatestSensor() {
-    return this.http.get<ApiSensorReading | null>('/api/esp32/latest');
-  }
-
   getEsp32Status() {
-    return this.http.get<{ online: boolean; lastSeen: string | null }>('/api/esp32/status');
+    return this.http.get<ApiEsp32Status>('/api/esp32/status');
   }
 
-  getLatestCapture() {
-    return this.http.get<ApiCaptureRow | null>('/api/camera/latest');
+  getMessages() {
+    return this.http.get<ApiMessage[]>('/api/messages');
   }
 
-  takeSnapshot() {
-    return this.http.post<{ id: number; ok: boolean }>('/api/ai/snapshot', {});
+  postMessage(body: { text: string; isWarning?: boolean; isError?: boolean; isPinned?: boolean; category?: string }) {
+    return this.http.post<ApiPostMessageResult>('/api/messages', body);
   }
 
-  runAiAnalysis(body: {
-    doorState: string;
-    chickensInside: number;
-    totalChickens: number;
-    weatherCode?: number;
-    tempMax?: number;
-    weatherLock: boolean;
-    serviceMode: boolean;
-    contextNote?: string;
-  }) {
+  pinMessage(id: number, pin: boolean) {
+    return this.http.patch<{ ok: boolean }>(`/api/messages/${id}/pin`, { pin });
+  }
+
+  unpinCategory(category: string) {
+    return this.http.patch<{ ok: boolean }>(`/api/messages/category/${category}/unpin`, {});
+  }
+
+  deleteMessage(id: number) {
+    return this.http.delete<{ ok: boolean }>(`/api/messages/${id}`);
+  }
+
+  runAiAnalysis(body: { contextNote?: string }) {
     return this.http.post<ApiAiResponse>('/api/ai/analyze', body);
   }
 
   getHealth() {
-    return this.http.get<{ status: string; dbWritable: boolean }>('/api/health');
+    return this.http.get<ApiHealth>('/api/health');
   }
 
-  // ── WebSocket ──────────────────────────────────────────────────────────────
+  // ── WebSocket ────────────────────────────────────────────────────────────
 
   connectWebSocket() {
     if (!isPlatformBrowser(this.platformId)) return;
@@ -166,6 +207,7 @@ export class ApiService {
     this.ws.onopen = () => {
       this.wsConnected = true;
       console.log('[WS] Connected');
+      this.wsOpen$.next();
     };
 
     this.ws.onmessage = (ev) => {

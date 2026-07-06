@@ -1,0 +1,21 @@
+<!-- 5-Day Weather Forecast -->
+<div class="glass-card p-6">
+  <h3 class="text-xs font-bold mb-1 text-stone-400 uppercase tracking-widest flex items-center gap-2">
+    <mat-icon class="text-sm">wb_sunny</mat-icon>
+    5-DAY WEATHER FORECAST
+  </h3>
+  @if (weatherSubtitle()) {
+    <p class="text-[9px] text-stone-500 mb-5 ml-6 normal-case tracking-normal">{{ weatherSubtitle() }}</p>
+  } @else {
+    <div class="mb-5"></div>
+  }
+  <div class="grid grid-cols-5 gap-2">
+    @for (day of weatherForecast(); track day.day) {
+      <div class="flex flex-col items-center p-2 rounded-xl bg-stone-900/50 border border-stone-800/50">
+        <span class="text-[10px] font-bold text-stone-500 uppercase mb-2">{{ day.day }}</span>
+        <mat-icon class="text-amber-500 mb-2">{{ day.icon }}</mat-icon>
+        <span class="text-sm font-black text-stone-200">{{ day.temp }}°</span>
+      </div>
+    }
+  </div>
+</div>

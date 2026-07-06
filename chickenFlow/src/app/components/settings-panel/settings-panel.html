@@ -1,0 +1,81 @@
+<!-- AI Settings -->
+<div class="glass-card p-6">
+  <h3 class="text-xs font-bold mb-4 text-stone-400 uppercase tracking-widest flex items-center gap-2">
+    <mat-icon class="text-sm">tune</mat-icon>
+    CHICKEN COOP SETTINGS
+  </h3>
+  <div class="space-y-6">
+    <div class="flex items-center justify-between gap-3">
+      <span class="text-xs font-bold text-stone-400 uppercase tracking-widest">Total Chickens</span>
+      <input type="number" [value]="totalChickens()" (change)="onTotalChickensChange($event)" [disabled]="serviceMode()"
+             class="w-20 bg-stone-900 border border-stone-800 rounded-lg px-3 py-1.5 text-sm text-amber-400 font-bold text-right focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+    </div>
+
+    <app-door-controls />
+
+    <div class="pt-2 space-y-4">
+      <div class="flex items-center justify-between">
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <div class="relative">
+            <input type="checkbox" class="sr-only peer" [checked]="smartNightLight()" (change)="toggleNightLight()">
+            <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+          </div>
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Smart Night-Light</span>
+        </label>
+        <mat-icon [class.text-amber-500]="smartNightLight()"
+                  [class.bulb-glow]="smartNightLight()"
+                  [class.animate-pulse]="smartNightLight() && doorState() !== DoorState.ERROR"
+                  [class.animate-rapid-flash]="smartNightLight() && doorState() === DoorState.ERROR"
+                  class="text-stone-700 text-lg transition-all">
+          {{ smartNightLight() ? 'lightbulb' : 'lightbulb_outline' }}
+        </mat-icon>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <div class="relative">
+            <input type="checkbox" class="sr-only peer" [checked]="musicSignal()" (change)="toggleMusic()">
+            <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+          </div>
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">Play Music Signal</span>
+        </label>
+        <mat-icon [class.text-amber-500]="musicSignal()"
+                  [class.animate-music]="musicSignal() && doorState() !== DoorState.ERROR"
+                  [class.animate-alert-pulse]="musicSignal() && doorState() === DoorState.ERROR"
+                  [class.text-red-500]="musicSignal() && doorState() === DoorState.ERROR"
+                  class="text-stone-700 text-lg transition-all">
+          {{ musicSignal() ? 'volume_up' : 'volume_off' }}
+        </mat-icon>
+      </div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-stone-800/50">
+        <label class="flex items-center gap-3 cursor-pointer group">
+          <div class="relative">
+            <input type="checkbox" class="sr-only peer" [checked]="serviceMode()" (change)="toggleDisableAll()">
+            <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+          </div>
+          <div class="flex flex-col">
+            <div class="flex items-center gap-1">
+              <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">SERVICE MODE</span>
+              <button (click)="toggleDisableInfo(); $event.stopPropagation()" class="text-stone-600 hover:text-red-500 transition-colors">
+                <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+              </button>
+            </div>
+          </div>
+        </label>
+        <mat-icon [class.text-red-500]="serviceMode()" [class.animate-pulse]="serviceMode()" class="text-stone-700 text-lg transition-all">
+          power_settings_new
+        </mat-icon>
+      </div>
+
+      <!-- Disable All Info Dialog -->
+      @if (showDisableInfo()) {
+        <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <p class="text-[10px] leading-relaxed text-red-200/80">
+            <span class="font-bold text-red-500 uppercase">Service Mode:</span> this will disable all functions leaving only manual modes ON for testing or service
+          </p>
+        </div>
+      }
+    </div>
+  </div>
+</div>

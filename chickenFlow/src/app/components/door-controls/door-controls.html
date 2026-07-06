@@ -1,0 +1,57 @@
+<div class="space-y-4 pt-2">
+  <div class="flex items-center justify-between">
+    <label class="flex items-center gap-3 cursor-pointer group">
+      <div class="relative">
+        <input type="checkbox" class="sr-only peer" [checked]="doorOpen()" (change)="toggleDoorOpen()">
+        <div class="w-10 h-5 bg-stone-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+      </div>
+      <div class="flex flex-col">
+        <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-hover:text-stone-300 transition-colors">DOOR OPEN</span>
+        @if (weatherLock()) {
+          <span class="text-[7px] text-red-500 font-bold uppercase tracking-tighter">Override Lockdown</span>
+        }
+      </div>
+    </label>
+    <div class="relative w-6 h-6 flex items-center justify-center">
+      <mat-icon [class.text-amber-500]="doorOpen()"
+                [class.animate-door-slide-horizontal]="doorOpen()"
+                class="text-stone-700 text-lg transition-all">
+        {{ doorOpen() ? 'sensor_door' : 'door_front' }}
+      </mat-icon>
+    </div>
+  </div>
+
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <button (click)="manualChickenReturn()"
+              [disabled]="isReturning()"
+              class="relative w-10 h-5 bg-stone-800 rounded-full transition-all active:scale-95 disabled:opacity-50 overflow-hidden">
+        <div class="absolute inset-0 bg-amber-600 transition-transform duration-300"
+             [class.translate-x-0]="isReturning()"
+             [class.-translate-x-full]="!isReturning()"></div>
+        <div class="absolute top-[2px] left-[2px] bg-white rounded-full h-4 w-4 transition-all"
+             [class.translate-x-5]="isReturning()"></div>
+      </button>
+      <div class="flex flex-col">
+        <div class="flex items-center gap-1">
+          <span class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Chickens Sensors Reset</span>
+          <button (click)="toggleResetInfo()" class="text-stone-600 hover:text-amber-500 transition-colors">
+            <mat-icon class="text-[14px] w-auto h-auto">info</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="text-lg" [class.animate-chicken-run]="isReturning()">
+      🐥
+    </div>
+  </div>
+
+  <!-- Reset Info Dialog -->
+  @if (showResetInfo()) {
+    <div class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+      <p class="text-[10px] leading-relaxed text-red-200/80">
+        <span class="font-bold text-red-500 uppercase">Warning:</span> This option will reset all counters and sensors. Please get all chickens back to the coop first.
+      </p>
+    </div>
+  }
+</div>
